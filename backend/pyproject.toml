@@ -1,0 +1,24 @@
+[project]
+name = "partsdonor-backend"
+version = "0.1.0"
+description = "PartsDonor — торговый слой B2B-маркетплейса, поверх InvenTree"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "sqlalchemy[asyncio]>=2.0,<3",
+    "asyncpg>=0.29,<1",
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.2,<3",
+    "alembic>=1.13,<2",
+    "httpx>=0.27,<1",
+    "inventree>=0.23,<1",   # официальный SDK InvenTree (актуальная 0.23.2)
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+]
+
+[tool.uv]
+# Версии уже заданы с верхними границами (безопасно под новые релизы).

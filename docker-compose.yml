@@ -1,0 +1,49 @@
+# PartsDonor — наш торговый слой (backend + frontend + своя PostgreSQL)
+# + InvenTree уже поднят отдельно (docker-compose.inventree.yml) на 8000.
+#
+# Подъём (docker доступен через sg docker, пока нет группы):
+#   sg docker -c "docker compose -f docker-compose.yml up -d"
+#   backend: http://127.0.0.1:8001  admin-UI: http://127.0.0.1:8001/docs
+#   frontend dev: http://127.0.0.1:5173
+
+services:
+  pd-db:
+    image: postgres:17
+    container_name: partsdonor-db2
+    environment:
+      - POSTGRES_USER=pduser
+      - POSTGRES_PASSWORD=pdpass
+      - POSTGRES_DB=partsdonor
+    ports:
+      - "5433:5432"   # не конфликтует с InvenTree (5432 внутри его сети)
+    volumes:
+      - ./data-pd/db:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  pd-backend:
+    build: ./backend
+    container_name: partsdonor-backend
+    depends_on:
+      - pd-db
+    environment:
+      - PARTSDONOR_DATABASE_URL=postgresql+asyncpg://pduser:pdpass@pd-db:5432/partsdonor
+      - PARTSDONOR_INVENTREE_BASE_URL=http://inventree-host.docker.internal:8000  # см. README
+      - PARTSDONOR_INVENTREE_TOKEN=${INVENTREE_TOKEN:-}
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  pd-frontend:
+    image: node:22-alpine
+    container_name: partsdonor-frontend
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev -- --host"
+    ports:
+      - "5173:5173"
+    restart: unless-stopped
+
+volumes:
+  frontend_node_modules:

@@ -1,5 +1,18 @@
 .hermes/
 # Данные InvenTree (тома), НЕ коммитить
 data/
+# Данные нашего Postgres (тома), НЕ коммитить
+data-pd/
+# Логи
 *.log
+# Секреты
 .env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/*.log
+
+# Python
+__pycache__/
+.venv/

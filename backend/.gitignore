@@ -1,0 +1,17 @@
+# =========================
+# PartsDonor backend — FastAPI
+# =========================
+# Торговый слой поверх InvenTree (source of truth инвентаря).
+# Своя транзакционная БД (торговый домен) + клиент к InvenTree REST API.
+#
+# Запуск (uv):
+#   uv sync
+#   uv run uvicorn app.main:app --reload --port 8001
+#
+# Docker: см. /home/aifactory/PartsDonor/docker-compose.yml
+
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/

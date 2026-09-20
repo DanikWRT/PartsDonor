@@ -1,1 +1,5 @@
 .hermes/
+# Данные InvenTree (тома), НЕ коммитить
+data/
+*.log
+.env

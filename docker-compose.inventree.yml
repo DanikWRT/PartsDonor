@@ -1,0 +1,47 @@
+# PartsDonor — локальный InvenTree (headless-инвентарь запчастей)
+# Поднимает production-образ InvenTree + PostgreSQL, без Caddy.
+# InvenTree слушает на 8000, панель: http://127.0.0.1:8000
+#
+# Использование (docker доступен через sg docker, если нет группы):
+#   sg docker -c "docker compose -f docker-compose.inventree.yml up -d"
+#   Логин по умолчанию: создаётся админ через "invoke setup" (внутри контейнера)
+#   или INVENTREE_ADMIN_* env.
+
+services:
+  inventree-db:
+    image: postgres:17
+    container_name: partsdonor-db
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdb
+      - POSTGRES_USER=pguser
+      - POSTGRES_PASSWORD=pgpassword
+      - POSTGRES_DB=inventree
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  inventree-server:
+    image: inventree/inventree:stable
+    container_name: partsdonor-inventree
+    depends_on:
+      - inventree-db
+    ports:
+      - "8000:8000"
+    environment:
+      - INVENTREE_SERVER=http://localhost:8000
+      - INVENTREE_DB_ENGINE=postgresql
+      - INVENTREE_DB_HOST=inventree-db
+      - INVENTREE_DB_PORT=5432
+      - INVENTREE_DB_USER=pguser
+      - INVENTREE_DB_PASSWORD=pgpassword
+      - INVENTREE_DB_NAME=inventree
+      - INVENTREE_DEBUG=true
+      # Админ-аккаунт создаётся автоматически при первом старте
+      - INVENTREE_ADMIN_USER=${INVENTREE_ADMIN_USER:-admin}
+      - INVENTREE_ADMIN_PASSWORD=${INVENTREE_ADMIN_PASSWORD:-admin123}
+      - INVENTREE_ADMIN_EMAIL=${INVENTREE_ADMIN_EMAIL:-admin@partsdonor.local}
+    volumes:
+      - ./data/media:/home/inventree/data/media:z
+      - ./data/static:/home/inventree/data/static:z
+      - ./data/backup:/home/inventree/data/backup:z
+    restart: unless-stopped

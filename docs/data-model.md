@@ -81,6 +81,38 @@ Buyer(компания) ──▶ PartsDonor (наш слой)
 - **Свой слой** — PostgreSQL + FastAPI + React (mobile-first), юзает InvenTree API по part_id.
 - **ЮKassa «Безопасная сделка»** (эскроу) + **СДЭК API** + Почта.
 
+## Стек custom-слоя: итог ресерча (факты, не «по привычке»)
+
+> Ресерч: ЮKassa/InvenTree/СДЭК SDK, бенчмарки стеков, очереди, frontend, БД.
+
+**Backend: FastAPI (Python). Frontend: Vite + React (SPA/PWA). БД: отдельная собственная PostgreSQL + Redis (очереди/вебхуки).**
+
+### Почему FastAPI (а не Node/Go) — факты
+- **Официальные SDK ЮKassa только PHP+Python.** Python — first-class. Для критического пути (Безопасная сделка) это решающее. Node/Go — только сторонние не проверенные вендором клиенты.
+- **Официальный Python SDK InvenTree** (`pip install inventree`) — классовый интерфейс к API. Для Node/Go готового клиента нет (писать HTTP-слой вручную).
+- **Плагинный путь отступления**: InvenTree AppMixin — если REST узкое место, можно добавить custom Django-модели/endpoint на Python. Команда JS/Go отрезана от этой возможности.
+- **Производительность**: для I/O-bound CRUD маркетплейса разница Go/Nest/FastAPI несущественна (~10% на CRUD). Наш слой — I/O-bound (REST к InvenTree, ЮKassa, СДЭК, вебхуки).
+- NestJS — хорош, только если команда именно на JS/TS; тогда все SDK сторонние и интеграция с ядром вручную.
+
+### Почему Vite + React (не Next.js)
+- PartsDonor — mobile-first marketplace за авторизацией, SEO/SSR не нужны → Vite+React быстрее и легче. Next.js — только если появится публичный SEO-каталог.
+
+### Почему отдельная БД (не в InvenTree)
+- Модели InvenTree — «danger zone»: добавление своих моделей внутрь ломает миграции при обновлении.
+- Торговый домен (сделки, эскроу, платежи, доставка) — отдельная ответственность, свой control и Alembic-миграции.
+
+### Итоговый стек
+```
+Backend: FastAPI + uvicorn, async SQLAlchemy/Pydantic
+   InvenTree: официальный inventree SDK
+   Платежи: yookassa-sdk-python (Безопасная сделка)
+   Доставка: cdek SDK или прямой HTTP к API 2.0
+   Очереди: Celery/ARQ на Redis (вебхуки, выплаты)
+Frontend: Vite + React (mobile-first SPA/PWA)
+БД: отдельная PostgreSQL (торговый домен) + Redis (очереди)
+Инвентарь: InvenTree как source of truth, интеграция по REST API
+```
+
 ## Риски / открытые вопросы (зафиксировать)
 
 - InvenTree 1.x использует свой `ApiToken` (не DRF) — токен получили через django shell (`users.models.ApiToken`), в API — `Authorization: Token <key>`.

@@ -6,11 +6,14 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    // прокси к нашему backend (FastAPI) на 8001
+    // Прокси к нашему backend (FastAPI на 8001).
+    // Frontend ходит на /api/..., backend отвечает на /... без префикса /api,
+    // поэтому strip-им '/api' при пробросе (rewrite).
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8001',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },

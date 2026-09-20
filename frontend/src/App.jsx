@@ -17,7 +17,7 @@ export default function App() {
       <main className="pd-main">
         <Routes>
           <Route path="/" element={<Catalog />} />
-          <Route path="/donor/:device" element={<DonorView />} />
+          <Route path="/donor/:brand/:model" element={<DonorView />} />
           <Route path="/cabinet" element={<Cabinet />} />
         </Routes>
       </main>

@@ -93,6 +93,49 @@ async def create_listing(payload: ListingIn, db: AsyncSession = Depends(get_db))
 # --- deals (заглушка; ЮKassa/СДЭК позже) ---
 
 
+@router.get("/donor/{brand}/{model}")
+async def get_donor(brand: str, model: str, db: AsyncSession = Depends(get_db)) -> dict:
+    """Развёртка донора + листинги его компонентов одним ответом.
+
+    Ищет device_schema по brand/model, затем по ключам hotspots сопоставляет
+    листинги (title содержит совпадение). Показываем схему с ценами/статусами.
+    """
+    schema = (
+        await db.execute(
+            select(DeviceSchema)
+            .where(DeviceSchema.brand == brand, DeviceSchema.model == model)
+            .order_by(DeviceSchema.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if schema is None:
+        raise HTTPException(status_code=404, detail="DeviceSchema not found")
+
+    all_listings = (await db.execute(select(Listing).order_by(Listing.created_at.desc()))).scalars().all()
+    # сопоставляем hotspots (слоты) с листингами по типу запчасти
+    slot_labels = {"display": "дисплей", "board": "плата", "battery": "аккумулятор",
+                   "camera": "камера", "backcover": "корпус"}
+    components = []
+    for slot, hotspot in (schema.hotspots or {}).items():
+        listing = next(
+            (l for l in all_listings if slot_labels.get(slot, "").lower() in l.title.lower()),
+            None,
+        )
+        components.append({
+            "slot": slot,
+            "title": listing.title if listing else "",
+            "price_rub": listing.price_rub if listing else 0,
+            "status": listing.status if listing else "active",
+            "hotspot": hotspot,
+        })
+    return {
+        "brand": schema.brand,
+        "model": schema.model,
+        "exploded_view_url": schema.exploded_view_url,
+        "components": components,
+    }
+
+
 @router.get("/deals", response_model=list[DealOut])
 async def list_deals(db: AsyncSession = Depends(get_db)) -> list[Deal]:
     result = await db.execute(select(Deal).order_by(Deal.created_at.desc()))

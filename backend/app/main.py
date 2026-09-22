@@ -15,16 +15,22 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.db import engine, get_db
+from app.deal_machine import ESCROW_BY_DEAL, validate_transition
 from app.inventree_client import inventree
+from app.auth import admin_router, auth_router, get_current_user, require_roles
 from app.models import (
+    User,
+    UserRole,
     Base,
     Company,
     Deal,
@@ -41,9 +47,12 @@ from app.schemas import (
     CatalogListingOut,
     CompanyIn,
     CompanyOut,
-    DealCreate,
+    DealCreateIn,
     DealOut,
-    DealStatusUpdate,
+    DealTransitionIn,
+    DealTransitionOut,
+    DealPayIn,
+    DealPayOut,
     DeviceSchemaIn,
     DeviceSchemaOut,
     DonorComponent,
@@ -54,7 +63,9 @@ from app.schemas import (
     ListingUpdate,
     ReviewIn,
     ReviewOut,
+    WebhookAck,
 )
+from app.yookassa_client import new_payment_id, yookassa
 
 log = logging.getLogger("partsdonor.main")
 
@@ -431,12 +442,17 @@ async def list_listings(
 
 
 @router.post("/listings", response_model=ListingOut, status_code=201)
-async def create_listing(payload: ListingIn, db: AsyncSession = Depends(get_db)) -> Listing:
-    data = payload.model_dump()
-    if data.get("seller_id"):
-        seller = await db.get(Company, data["seller_id"])
-        if seller is None:
-            raise HTTPException(status_code=400, detail="seller_id: Company не найден")
+async def create_listing(
+    payload: ListingIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
+) -> Listing:
+    # seller привязываем к компании аутентифицированного пользователя —
+    # seller_id из тела не доверяем
+    data = payload.model_dump(exclude={"seller_id"})
+    if user.company_id is None:
+        raise HTTPException(status_code=403, detail="У пользователя нет компании (мастерской)")
+    data["seller_id"] = user.company_id
     if data.get("inventree_part_id"):
         try:
             inventree.get_part(data["inventree_part_id"])
@@ -472,11 +488,17 @@ async def get_listing(listing_id: uuid.UUID, db: AsyncSession = Depends(get_db))
 
 @router.patch("/listings/{listing_id}", response_model=ListingOut)
 async def update_listing(
-    listing_id: uuid.UUID, payload: ListingUpdate, db: AsyncSession = Depends(get_db)
+    listing_id: uuid.UUID,
+    payload: ListingUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
 ) -> Listing:
     record = await db.get(Listing, listing_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Listing not found")
+    # владение: seller редактирует только свои листинги (admin — любые)
+    if user.role != UserRole.admin and record.seller_id != user.company_id:
+        raise HTTPException(status_code=403, detail="Нет доступа к этому листингу")
     for k, v in payload.model_dump(exclude_none=True).items():
         setattr(record, k, v)
     await db.commit()
@@ -487,39 +509,10 @@ async def update_listing(
 
 # ============================== DEALS (статусная машина + escrow) ==============================
 
-# Допустимые переходы статусной машины сделки
-_DEAL_TRANSITIONS: dict[DealStatus, set[DealStatus]] = {
-    DealStatus.created: {DealStatus.paid_escrow, DealStatus.refunded, DealStatus.dispute},
-    DealStatus.paid_escrow: {DealStatus.shipped, DealStatus.refunded, DealStatus.dispute},
-    DealStatus.shipped: {DealStatus.delivered, DealStatus.dispute},
-    DealStatus.delivered: {DealStatus.completed, DealStatus.refunded, DealStatus.dispute},
-    DealStatus.completed: set(),
-    DealStatus.refunded: set(),
-    DealStatus.dispute: {DealStatus.refunded, DealStatus.delivered},
-}
-
-_ESCROW_BY_DEAL: dict[DealStatus, str] = {
-    DealStatus.created: "created",
-    DealStatus.paid_escrow: "paid",
-    DealStatus.shipped: "in_progress",
-    DealStatus.delivered: "in_progress",
-    DealStatus.completed: "released",
-    DealStatus.refunded: "refunded",
-    DealStatus.dispute: "in_progress",
-}
-
-
-def _check_transition(current: DealStatus, target: DealStatus) -> None:
-    if target not in _DEAL_TRANSITIONS[current]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Недопустимый переход статуса сделки: {current.value} -> {target.value}",
-        )
-
 
 @router.post("/deals", response_model=DealOut, status_code=201)
-async def create_deal(payload: DealCreate, db: AsyncSession = Depends(get_db)) -> Deal:
-    """Создание сделки по listing'у. Автоматически резервирует листинг (negotiated)."""
+async def create_deal(payload: DealCreateIn, db: AsyncSession = Depends(get_db)) -> Deal:
+    """Создание сделки по listing'у. Стартовый статус created, escrow — готов для ЮKassa."""
     listing = await db.get(Listing, payload.listing_id)
     if listing is None:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -530,14 +523,23 @@ async def create_deal(payload: DealCreate, db: AsyncSession = Depends(get_db)) -
     if buyer is None:
         raise HTTPException(status_code=400, detail="buyer_company_id: Company не найден")
 
+    seller_company_id = payload.seller_company_id or listing.seller_id
+    if seller_company_id is not None:
+        seller = await db.get(Company, seller_company_id)
+        if seller is None:
+            raise HTTPException(status_code=400, detail="seller_company_id: Company не найден")
+
     amount = payload.amount_rub or listing.price_rub
     deal = Deal(
         listing_id=listing.id,
         buyer_company_id=buyer.id,
+        seller_company_id=seller_company_id,
         status=DealStatus.created,
         amount_rub=amount,
+        yookassa_payment_id=payload.yookassa_payment_id,
         escrow_status="created",
         shipping_address=payload.shipping_address,
+        transitions=[],
     )
     db.add(deal)
     # Листинг уходит в переговоры
@@ -566,24 +568,215 @@ async def get_deal(deal_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> De
     return record
 
 
-@router.patch("/deals/{deal_id}/status", response_model=DealOut)
-async def update_deal_status(
-    deal_id: uuid.UUID, payload: DealStatusUpdate, db: AsyncSession = Depends(get_db)
-) -> Deal:
+@router.post("/deals/{deal_id}/transition", response_model=DealTransitionOut)
+async def transition_deal(
+    deal_id: uuid.UUID,
+    payload: DealTransitionIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.buyer, UserRole.admin)),
+) -> DealTransitionOut:
     """Перевод сделки по статусной машине; escrow-статус обновляется автоматически."""
     record = await db.get(Deal, deal_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Deal not found")
+    # владение: seller/buyer работают только со своими сделками (admin — любые)
+    if user.role != UserRole.admin:
+        my_company = user.company_id
+        if my_company not in (record.seller_company_id, record.buyer_company_id):
+            raise HTTPException(status_code=403, detail="Нет доступа к этой сделке")
 
-    _check_transition(record.status, payload.status)
-    record.status = payload.status
-    record.escrow_status = _ESCROW_BY_DEAL[payload.status]  # type: ignore[assignment]
+    from_status = record.status
+    if payload.from_status is not None and payload.from_status != from_status:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ожидался статус {payload.from_status.value}, фактический {from_status.value}",
+        )
+    try:
+        validate_transition(from_status, payload.to)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    record.status = payload.to
+    record.escrow_status = ESCROW_BY_DEAL[payload.to]
+    history = list(record.transitions or [])
+    history.append(
+        {
+            "from": from_status.value,
+            "to": payload.to.value,
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    record.transitions = history
     await db.commit()
     await db.refresh(record)
-    return record
+    return DealTransitionOut(
+        from_status=from_status,
+        to_status=payload.to,
+        ok=True,
+        deal=record,
+    )
+
+
+# ============================== ЮKASSA (Безопасная сделка) ==============================
+
+
+@router.post("/deals/{deal_id}/pay", response_model=DealPayOut, status_code=status.HTTP_201_CREATED)
+async def deal_pay(
+    deal_id: uuid.UUID,
+    payload: DealPayIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> DealPayOut:
+    """Создать платёж «на холд» в ЮKassa (Безопасная сделка) для сделки.
+
+    В тестовом режиме (нет ключей магазина) возвращаем синтетический объект платежа
+    той же формы — чтобы интеграцию можно было прогнать без живого магазина ЮKassa.
+    payment_id сохраняем в deal.yookassa_payment_id (по нему потом найдём сделку
+    в вебхуке payment.succeeded).
+    """
+    deal = await db.get(Deal, deal_id)
+    if deal is None:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    # платит покупатель своей сделки (admin — любой)
+    if user.role != UserRole.admin and deal.buyer_company_id != user.company_id:
+        raise HTTPException(status_code=403, detail="Нет доступа к этой сделке")
+    if deal.status != DealStatus.created:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Платёж можно создать только для сделки в статусе created (сейчас {deal.status.value})",
+        )
+
+    payment_id = new_payment_id()
+    payment = yookassa.create_safe_deal_payment(
+        amount_rub=deal.amount_rub,
+        deal_id=str(deal.id),
+        payment_id=payment_id,
+        return_url=payload.return_url,
+    )
+
+    # сохраняем id платежа — по нему вебхук найдёт сделку
+    deal.yookassa_payment_id = payment.get("id") or payment_id
+    await db.commit()
+    await db.refresh(deal)
+
+    return DealPayOut(
+        payment_id=deal.yookassa_payment_id or payment_id,
+        deal_id=deal.id,
+        status=payment.get("status", "pending"),
+        confirmation_url=payment.get("confirmation", {}).get("confirmation_url") if isinstance(
+            payment.get("confirmation"), dict
+        ) else None,
+        test=bool(payment.get("test", yookassa.test_mode)),
+    )
+
+
+@router.post("/webhooks/yookassa", response_model=WebhookAck)
+async def yookassa_webhook(
+    request: Request, db: AsyncSession = Depends(get_db)
+) -> WebhookAck:
+    """Вебхук ЮKassa: уведомления об изменении статуса платежа/сделки.
+
+    Безопасность:
+      1. проверка IP отправителя по подсетям ЮKassa;
+      2. проверка HMAC-подписи тела на секрете уведомлений (constant-time).
+    Если событие payment.succeeded — переводим сделку created → escrow_paid
+    (escrow_status created → paid), находим её по yookassa_payment_id == object.id.
+    ЮKassa ждёт HTTP 200; иначе повторяет доставку 24ч.
+    """
+    client_ip = request.client.host if request.client else None
+
+    # 1. IP-фильтр (подсети ЮKassa)
+    if not yookassa.sender_ip_allowed(client_ip):
+        log.warning("ЮKassa webhook: IP не из подсетей ЮKassa: %s", client_ip)
+        raise HTTPException(status_code=403, detail="IP not allowed")
+
+    # 2. HMAC-подпись тела (X-Signature / заголовок).
+    raw_body = await request.body()
+    sig = request.headers.get("X-Signature") or request.headers.get("X-Yookassa-Signature")
+    if not yookassa.verify_webhook_signature(
+        raw_body, sig, settings.yookassa_notification_secret
+    ):
+        log.warning("ЮKassa webhook: неверная подпись")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    try:
+        body = await request.json()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Invalid JSON") from exc
+
+    event, obj = yookassa.parse_notification(body)
+    if event is None:
+        raise HTTPException(status_code=400, detail="Not a YooKassa notification")
+
+    processed = False
+    if event == "payment.succeeded":
+        processed = await _on_payment_succeeded(obj or {}, db)
+
+    return WebhookAck(
+        received=True,
+        event=event,
+        payment_id=obj.get("id") if obj else None,
+        processed=processed,
+    )
+
+
+async def _on_payment_succeeded(obj: dict, db: AsyncSession) -> bool:
+    """Обработка payment.succeeded: created → escrow_paid + escrow created → paid."""
+    pay_id = obj.get("id")
+    if not pay_id:
+        return False
+    deal = (
+        await db.execute(select(Deal).where(Deal.yookassa_payment_id == pay_id))
+    ).scalar_one_or_none()
+    if deal is None:
+        log.info("ЮKassa payment.succeeded: сделка по платежу %s не найдена", pay_id)
+        return False
+    if deal.status != DealStatus.created:
+        # уже оплачена/уехала дальше — идемпотентно, повторно не переходим
+        log.info("ЮKassa payment.succeeded: сделка %s уже в статусе %s", deal.id, deal.status.value)
+        return False
+
+    try:
+        validate_transition(deal.status, DealStatus.escrow_paid)
+    except ValueError as exc:
+        log.warning("ЮKassa payment.succeeded: %s", exc)
+        return False
+
+    deal.status = DealStatus.escrow_paid
+    deal.escrow_status = ESCROW_BY_DEAL[DealStatus.escrow_paid]  # paid
+    history = list(deal.transitions or [])
+    history.append(
+        {
+            "from": DealStatus.created.value,
+            "to": DealStatus.escrow_paid.value,
+            "at": datetime.now(timezone.utc).isoformat(),
+            "source": "yookassa_webhook",
+            "payment_id": pay_id,
+        }
+    )
+    deal.transitions = history
+    await db.commit()
+    log.info("ЮKassa payment.succeeded: сделка %s → escrow_paid", deal.id)
+    return True
 
 
 # ============================== REVIEWS ==============================
+
+
+@router.get("/companies/{company_id}/rating")
+async def company_rating(company_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> dict:
+    """Средний рейтинг продавца: {seller_id, avg_rating, review_count}."""
+    company = await db.get(Company, company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    stmt = select(func.count(Review.id), func.avg(Review.rating)).where(Review.seller_id == company_id)
+    review_count, avg_rating = (await db.execute(stmt)).one()
+    return {
+        "seller_id": company_id,
+        "avg_rating": round(float(avg_rating), 2) if avg_rating is not None else 0.0,
+        "review_count": review_count,
+    }
 
 
 @router.get("/reviews", response_model=list[ReviewOut])
@@ -620,6 +813,8 @@ async def create_review(payload: ReviewIn, db: AsyncSession = Depends(get_db)) -
 
 
 app.include_router(router)
+app.include_router(auth_router)
+app.include_router(admin_router)
 
 
 @app.get("/", include_in_schema=False)

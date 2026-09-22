@@ -103,21 +103,25 @@ class ListingOut(BaseModel):
 # --- Deal ---
 
 
-class DealCreate(BaseModel):
+class DealCreateIn(BaseModel):
     listing_id: uuid.UUID
     buyer_company_id: uuid.UUID
+    seller_company_id: uuid.UUID | None = None
     amount_rub: float = Field(gt=0)
+    yookassa_payment_id: str | None = None
     shipping_address: str = ""
 
 
-class DealStatusUpdate(BaseModel):
-    status: DealStatus  # целевой статус сделки (статусная машина)
+class DealTransitionIn(BaseModel):
+    to: DealStatus  # целевой статус сделки
+    from_status: DealStatus | None = None  # опционально: ожидаемый текущий статус
 
 
 class DealOut(BaseModel):
     id: uuid.UUID
     listing_id: uuid.UUID
     buyer_company_id: uuid.UUID | None
+    seller_company_id: uuid.UUID | None
     status: DealStatus
     amount_rub: float
     currency: str
@@ -126,10 +130,39 @@ class DealOut(BaseModel):
     sdek_order_uuid: str | None
     sdek_tracking: str | None
     shipping_address: str
+    transitions: list[dict] = []
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DealTransitionOut(BaseModel):
+    from_status: DealStatus
+    to_status: DealStatus
+    ok: bool = True
+    deal: DealOut
+
+
+class DealPayIn(BaseModel):
+    # куда ЮKassa вернёт пользователя после оплаты (платёжная форма redirect)
+    return_url: str = Field(default="https://partsdonor.local/pay/success")
+
+
+class DealPayOut(BaseModel):
+    payment_id: str
+    deal_id: uuid.UUID
+    status: str              # статус объекта платежа ЮKassa
+    confirmation_url: str | None = None
+    test: bool               # тестовый режим
+
+
+class WebhookAck(BaseModel):
+    """Ответ на вебхук ЮKassa: HTTP 200 = принято (иначе ЮKassa шлёт повторно 24ч)."""
+    received: bool
+    event: str | None = None
+    payment_id: str | None = None
+    processed: bool = False
 
 
 # --- Review ---

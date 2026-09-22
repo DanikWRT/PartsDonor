@@ -55,13 +55,22 @@ class PartCondition(str, enum.Enum):
 
 
 class DealStatus(str, enum.Enum):
-    created = "created"          # создана (ожидание оплаты/экскроу)
-    paid_escrow = "paid_escrow"  # деньги в эскроу (ЮKassa Безопасная сделка)
-    shipped = "shipped"          # отгружено
-    delivered = "delivered"      # доставлено
-    completed = "completed"      # подтверждено покупателем, выплата продавцу
-    refunded = "refunded"        # возврат покупателю
-    dispute = "dispute"          # спор / арбитраж
+    created = "created"                    # создана, ожидание escrow-оплаты
+    escrow_paid = "escrow_paid"            # деньги в эскроу (ЮKassa Безопасная сделка)
+    seller_confirmed = "seller_confirmed"  # продавец подтвердил готовность
+    shipped = "shipped"                    # отгружено (СДЭК)
+    delivered = "delivered"                # получено покупателем
+    buyer_confirmed = "buyer_confirmed"    # покупатель подтвердил получение
+    payout = "payout"                      # выплата продавцу
+    completed = "completed"                # завершено
+    refunded = "refunded"                  # возврат покупателю
+    dispute = "dispute"                    # спор / арбитраж
+
+
+class UserRole(str, enum.Enum):
+    seller = "seller"
+    buyer = "buyer"
+    admin = "admin"
 
 
 class EscrowStatus(str, enum.Enum):
@@ -73,6 +82,30 @@ class EscrowStatus(str, enum.Enum):
 
 
 # --- модели ---
+
+
+class User(Base):
+    """Аккаунт пользователя маркетплейса (B8).
+
+    Роли: seller (мастерская), buyer, admin. seller опционально привязан к
+    Company (мастерской) через company_id — по нему проверяем владение
+    листингами/сделками.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[UserRole] = mapped_column(
+        Enum(UserRole, name="user_role"), default=UserRole.buyer
+    )
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    company: Mapped[Company | None] = relationship()
 
 
 class Company(Base):
@@ -156,6 +189,9 @@ class Deal(Base):
     buyer_company_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("companies.id"), nullable=True
     )
+    seller_company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True
+    )
 
     status: Mapped[DealStatus] = mapped_column(
         Enum(DealStatus, name="deal_status"), default=DealStatus.created
@@ -175,9 +211,12 @@ class Deal(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # История переходов статусной машины: [{"from":..., "to":..., "at":...}, ...]
+    transitions: Mapped[list] = mapped_column(JSON, default=list)
 
     listing: Mapped[Listing] = relationship(back_populates="deals")
-    buyer: Mapped[Company | None] = relationship()
+    buyer: Mapped[Company | None] = relationship(foreign_keys=[buyer_company_id])
+    seller: Mapped[Company | None] = relationship(foreign_keys=[seller_company_id])
 
 
 class Review(Base):

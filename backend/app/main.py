@@ -62,6 +62,21 @@ app = FastAPI(title="PartsDonor API", version="0.2.0")
 router = APIRouter()
 
 
+def _part_info(part_id):
+    if not part_id:
+        return (None, None)
+    try:
+        p = inventree.get_part(int(part_id))
+    except Exception:
+        return (None, None)
+    name = p.get("name") or None
+    cat_name = None
+    raw = p.get("category")
+    if isinstance(raw, int):
+        cat_name = inventree.category_name_map().get(raw)
+    return (name, cat_name)
+
+
 def _warranty(condition: str | None) -> bool:
     """Гарантия на деталь, выводимая из состояния листинга.
 
@@ -401,12 +416,18 @@ async def get_device_schema(schema_id: uuid.UUID, db: AsyncSession = Depends(get
 @router.get("/listings", response_model=list[ListingOut])
 async def list_listings(
     status: ListingStatus | None = None,
+    seller_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> list[Listing]:
     stmt = select(Listing).order_by(Listing.created_at.desc())
     if status is not None:
         stmt = stmt.where(Listing.status == status)
-    return list((await db.execute(stmt)).scalars().all())
+    if seller_id is not None:
+        stmt = stmt.where(Listing.seller_id == seller_id)
+    records = list((await db.execute(stmt)).scalars().all())
+    for record in records:
+        record.part_name, record.part_category = _part_info(record.inventree_part_id)
+    return records
 
 
 @router.post("/listings", response_model=ListingOut, status_code=201)
@@ -416,10 +437,27 @@ async def create_listing(payload: ListingIn, db: AsyncSession = Depends(get_db))
         seller = await db.get(Company, data["seller_id"])
         if seller is None:
             raise HTTPException(status_code=400, detail="seller_id: Company не найден")
+    if data.get("inventree_part_id"):
+        try:
+            inventree.get_part(data["inventree_part_id"])
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=400,
+                detail=f"inventree_part_id: деталь {data['inventree_part_id']} не найдена в InvenTree",
+            ) from exc
+    if data.get("inventree_stock_id"):
+        try:
+            inventree.request("GET", f"stock/{data['inventree_stock_id']}/")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=400,
+                detail=f"inventree_stock_id: сток {data['inventree_stock_id']} не найден в InvenTree",
+            ) from exc
     record = Listing(**data)
     db.add(record)
     await db.commit()
     await db.refresh(record)
+    record.part_name, record.part_category = _part_info(record.inventree_part_id)
     return record
 
 
@@ -428,6 +466,7 @@ async def get_listing(listing_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     record = await db.get(Listing, listing_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Listing not found")
+    record.part_name, record.part_category = _part_info(record.inventree_part_id)
     return record
 
 
@@ -442,6 +481,7 @@ async def update_listing(
         setattr(record, k, v)
     await db.commit()
     await db.refresh(record)
+    record.part_name, record.part_category = _part_info(record.inventree_part_id)
     return record
 
 

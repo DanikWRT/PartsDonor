@@ -88,6 +88,8 @@ class ListingOut(BaseModel):
     inventree_stock_id: int | None
     seller_id: uuid.UUID | None
     device_schema_id: uuid.UUID | None
+    part_name: str | None = None
+    part_category: str | None = None
     title: str
     price_rub: float
     condition: PartCondition

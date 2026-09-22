@@ -106,7 +106,25 @@ class InventreeClient:
         return self.request("POST", "stock/", json=body)
 
     # --- BOM (структура донора: родитель -> дочерние части xN) ---
+    def part_is_assembly(self, part_id: int) -> bool:
+        """True если part.assembly=True.
+
+        BOM-родитель обязан быть assembly=True — иначе у парта нет структуры BOM
+        (InvenTree не разрешает BOM для не-assembly-партов).
+        """
+        try:
+            part = self.get_part(part_id)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("InvenTree part pk=%s недоступен для проверки assembly: %s", part_id, exc)
+            return False
+        return bool(part.get("assembly"))
+
     def list_bom_items(self, part: int) -> list[dict]:
+        # BOM-запрос допустим только если родитель assembly=True; иначе возвращаем
+        # пустой список и предупреждаем в лог (не полагаемся на проверку в verify-скрипте).
+        if not self.part_is_assembly(part):
+            log.warning("InvenTree part pk=%s не assembly=True — BOM не читаем, вернём пустой список", part)
+            return []
         return self._paginate(self.request("GET", "bom/", params={"part": part}))
 
     def get_bom_subs(self, donor_part_id: int) -> list[dict]:
@@ -115,6 +133,8 @@ class InventreeClient:
         Возвращает компоненты донора: [{part_id, name, quantity}].
         InvenTree BOM item имеет поля `part` (родитель), `sub_part` (компонент),
         `sub_part_detail` (вложенные данные part).
+
+        Пустой список, если донор не assembly=True (проверка в list_bom_items).
         """
         items = self.list_bom_items(donor_part_id)
         out: list[dict] = []

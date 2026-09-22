@@ -163,6 +163,7 @@ class CatalogItem(BaseModel):
     listing_status: str | None = None
     listing_condition: str | None = None  # состояние детали из листинга
     listing_provenance: str | None = None
+    listing_warranty: bool | None = None  # гарантия на деталь (выводится из condition)
     listing_id: uuid.UUID | None = None
     seller_name: str | None = None
     seller_rating: float | None = None
@@ -189,6 +190,7 @@ class CatalogListingOut(BaseModel):
     price_rub: float
     condition: str
     provenance: str
+    warranty: bool = False   # гарантия на деталь (условие != no_guarantee)
     status: str
     seller_name: str | None = None
     seller_rating: float | None = None

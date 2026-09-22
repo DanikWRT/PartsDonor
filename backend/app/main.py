@@ -32,6 +32,7 @@ from app.models import (
     DeviceSchema,
     Listing,
     ListingStatus,
+    PartCondition,
     Review,
 )
 from app.schemas import (
@@ -61,6 +62,48 @@ app = FastAPI(title="PartsDonor API", version="0.2.0")
 router = APIRouter()
 
 
+def _warranty(condition: str | None) -> bool:
+    """Гарантия на деталь, выводимая из состояния листинга.
+
+    Отсутствует только у деталей без гарантии (no_guarantee); во всех остальных
+    состоянии (working/for_parts/untested) мастерская даёт гарантию. Данных о
+    гарантийном сроке в модели пока нет — это булево присутствие гарантии.
+    """
+    return condition != PartCondition.no_guarantee.value
+
+
+async def _resolve_brand_model_parts(
+    db: AsyncSession, brand: str | None, model: str | None
+) -> set[int] | None:
+    """Детали по бренду/модели телефона — через наши device_schemas и донор.
+
+    Ищет схемы (развёртки) моделей по brand/model; для каждой берёт донора
+    (inventree_donor_part_id) и его BOM-компоненты, возвращает множество pk Part,
+    которые показываем в каталоге. Если бренд/модель не заданы — None (фильтра нет).
+    """
+    if not brand and not model:
+        return None
+
+    stmt = select(DeviceSchema)
+    if brand:
+        stmt = stmt.where(DeviceSchema.brand.ilike(f"%{brand}%"))
+    if model:
+        stmt = stmt.where(DeviceSchema.model.ilike(f"%{model}%"))
+    schemas = (await db.execute(stmt)).scalars().all()
+
+    part_ids: set[int] = set()
+    for s in schemas:
+        donor_id = s.inventree_donor_part_id
+        if donor_id is None:
+            continue
+        part_ids.add(donor_id)
+        for comp in inventree.get_bom_subs(donor_id):
+            cid = comp.get("part_id")
+            if cid is not None:
+                part_ids.add(int(cid))
+    return part_ids
+
+
 # ============================== HEALTH ==============================
 
 
@@ -79,7 +122,10 @@ async def health() -> HealthOut:
 @router.get("/catalog", response_model=list[CatalogItem])
 async def catalog(
     q: str | None = Query(default=None, description="Поиск по названию бренда/модели/типа"),
+    brand: str | None = Query(default=None, description="Бренд телефона (через device_schemas)"),
+    model: str | None = Query(default=None, description="Модель телефона (через device_schemas)"),
     category: int | None = Query(default=None, description="id категории InvenTree"),
+    category_name: str | None = Query(default=None, description="Тип детали — имя категории (подстрока)"),
     status: ListingStatus | None = Query(default=None, description="статус листинга"),
     price_from: float | None = Query(default=None, description="Мин. цена"),
     price_to: float | None = Query(default=None, description="Макс. цена"),
@@ -87,8 +133,30 @@ async def catalog(
     sort: str | None = Query(default=None, description="price_asc|price_desc|name"),
     db: AsyncSession = Depends(get_db),
 ) -> list[CatalogItem]:
-    """Каталог деталей. Данные — из InvenTree (source of truth), цены — с наших листингов."""
+    """Каталог деталей. Данные — из InvenTree (source of truth), цены — с наших листингов.
+
+    Поиск: q (имя), brand/model (модель телефона — через device_schemas и донор+его BOM),
+    category/category_name (тип детали). Фильтры накладываются И.
+    """
+    # Ограничение множества деталей по бренду/модели телефона (через наш слой)
+    brand_model_parts = await _resolve_brand_model_parts(db, brand, model)
+
     parts = inventree.search_parts(search=q, category=category)
+
+    # Поиск "типа" (категории) по имени: собираем категории, начинающиеся/содержащие имя
+    if category_name:
+        cats = inventree.list_categories()
+        match_ids = {
+            c["pk"] for c in cats if category_name.lower() in (c.get("name") or "").lower()
+        }
+        parts = [p for p in parts if p.get("category") in match_ids]
+
+    # Фильтр по бренду/модели: если запрошены и по ним ничего не нашлось — пустой каталог
+    if brand_model_parts is not None:
+        if not brand_model_parts:
+            return []
+        parts = [p for p in parts if int(p.get("pk", 0)) in brand_model_parts]
+
     cat_names = inventree.category_name_map()
 
     # Все активные листинги + продавец (для рейтинга/гарантии)
@@ -132,6 +200,7 @@ async def catalog(
         if price_to is not None and (price is None or price > price_to):
             continue
         seller = listing.seller if listing else None
+        listing_cond = listing.condition.value if listing else None
         items.append(
             CatalogItem(
                 id=pid,
@@ -141,8 +210,9 @@ async def catalog(
                 in_stock=in_stock,
                 listing_price=listing.price_rub if listing else None,
                 listing_status=listing.status.value if listing else None,
-                listing_condition=listing.condition.value if listing else None,
+                listing_condition=listing_cond,
                 listing_provenance=listing.provenance if listing else None,
+                listing_warranty=_warranty(listing_cond),
                 listing_id=listing.id if listing else None,
                 seller_name=seller.name if seller else None,
                 seller_rating=seller.rating if seller else None,
@@ -201,6 +271,7 @@ async def catalog_detail(
                 price_rub=l.price_rub,
                 condition=l.condition.value,
                 provenance=l.provenance,
+                warranty=_warranty(l.condition.value),
                 status=l.status.value,
                 seller_name=seller.name if seller else None,
                 seller_rating=seller.rating if seller else None,

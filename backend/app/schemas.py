@@ -7,7 +7,31 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.models import DealStatus, ListingStatus, PartCondition
+from app.models import DealStatus, EscrowStatus, ListingStatus, PartCondition
+
+
+# --- Company (мастерская / продавец) ---
+
+
+class CompanyIn(BaseModel):
+    name: str
+    inventree_company_id: int | None = None
+    role: str = "seller"
+    slug: str | None = None
+    verified: bool = False
+
+
+class CompanyOut(BaseModel):
+    id: uuid.UUID
+    inventree_company_id: int | None
+    name: str
+    role: str
+    slug: str | None
+    rating: float
+    verified: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 # --- DeviceSchema (развёртка) ---
@@ -21,6 +45,7 @@ class HotspotIn(BaseModel):
 class DeviceSchemaIn(BaseModel):
     brand: str
     model: str
+    inventree_donor_part_id: int | None = None
     exploded_view_url: str = ""
     hotspots: dict[str, HotspotIn] = {}
 
@@ -29,6 +54,7 @@ class DeviceSchemaOut(BaseModel):
     id: uuid.UUID
     brand: str
     model: str
+    inventree_donor_part_id: int | None
     exploded_view_url: str
     hotspots: dict[str, HotspotIn]
     created_at: datetime
@@ -40,21 +66,27 @@ class DeviceSchemaOut(BaseModel):
 
 
 class ListingIn(BaseModel):
-    inventree_part_id: int | None = None
-    inventree_stock_id: int | None = None
-    inventree_seller_id: int | None = None
-    device_schema_id: uuid.UUID | None = None
     title: str
     price_rub: float = Field(gt=0)
     condition: PartCondition = PartCondition.untested
     provenance: str = ""
+    inventree_part_id: int | None = None
+    inventree_stock_id: int | None = None
+    seller_id: uuid.UUID | None = None
+    device_schema_id: uuid.UUID | None = None
+
+
+class ListingUpdate(BaseModel):
+    status: ListingStatus | None = None
+    price_rub: float | None = Field(default=None, gt=0)
+    condition: PartCondition | None = None
 
 
 class ListingOut(BaseModel):
     id: uuid.UUID
     inventree_part_id: int | None
     inventree_stock_id: int | None
-    inventree_seller_id: int | None
+    seller_id: uuid.UUID | None
     device_schema_id: uuid.UUID | None
     title: str
     price_rub: float
@@ -69,18 +101,114 @@ class ListingOut(BaseModel):
 # --- Deal ---
 
 
+class DealCreate(BaseModel):
+    listing_id: uuid.UUID
+    buyer_company_id: uuid.UUID
+    amount_rub: float = Field(gt=0)
+    shipping_address: str = ""
+
+
+class DealStatusUpdate(BaseModel):
+    status: DealStatus  # целевой статус сделки (статусная машина)
+
+
 class DealOut(BaseModel):
     id: uuid.UUID
     listing_id: uuid.UUID
+    buyer_company_id: uuid.UUID | None
     status: DealStatus
     amount_rub: float
+    currency: str
     yookassa_payment_id: str | None
-    escrow_status: str
+    escrow_status: EscrowStatus
     sdek_order_uuid: str | None
     sdek_tracking: str | None
+    shipping_address: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# --- Review ---
+
+
+class ReviewIn(BaseModel):
+    rating: int = Field(ge=1, le=5, default=5)
+    comment: str = ""
+    seller_id: uuid.UUID | None = None
+
+
+class ReviewOut(BaseModel):
+    id: uuid.UUID
+    deal_id: uuid.UUID | None
+    seller_id: uuid.UUID | None
+    rating: int
+    comment: str
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- Каталог (из InvenTree + наши цены) ---
+
+
+class CatalogItem(BaseModel):
+    id: int                       # pk Part in InvenTree
+    name: str
+    category: str = ""
+    is_assembly: bool = False
+    in_stock: bool = False
+    listing_price: float | None = None   # наша цена с лучшего active listing
+    listing_status: str | None = None
+    listing_condition: str | None = None  # состояние детали из листинга
+    listing_provenance: str | None = None
+    listing_id: uuid.UUID | None = None
+    seller_name: str | None = None
+    seller_rating: float | None = None
+    seller_verified: bool | None = None
+
+
+class CatalogDetail(BaseModel):
+    """Карточка детали: часть из InvenTree + все активные листинги + рейтинг продавца."""
+    id: int
+    name: str
+    category: str = ""
+    is_assembly: bool = False
+    in_stock: bool = False
+    description: str = ""
+    image_url: str | None = None
+    listings: list["CatalogListingOut"] = []
+    min_price: float | None = None
+    min_condition: str | None = None
+
+
+class CatalogListingOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    price_rub: float
+    condition: str
+    provenance: str
+    status: str
+    seller_name: str | None = None
+    seller_rating: float | None = None
+    seller_verified: bool | None = None
+
+
+class DonorComponent(BaseModel):
+    slot: str
+    title: str = ""
+    part_id: int | None = None
+    price_rub: float = 0
+    status: str = "active"
+    hotspot: dict = {}
+
+
+class DonorSchema(BaseModel):
+    brand: str
+    model: str
+    exploded_view_url: str
+    components: list[DonorComponent]
 
 
 # --- Прочее ---
@@ -90,3 +218,4 @@ class HealthOut(BaseModel):
     partsdonor_backend: str = "ok"
     inventree: bool
     inventree_base_url: str
+    version: str = "0.2.0"

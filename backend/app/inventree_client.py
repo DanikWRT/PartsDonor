@@ -67,6 +67,22 @@ class InventreeClient:
     def list_parts(self, **filters: Any) -> list[dict]:
         return self._paginate(self.request("GET", "part/", params=filters))
 
+    def get_part(self, part_id: int) -> dict:
+        return self.request("GET", f"part/{part_id}/")
+
+    # Каталог: поиск по имени/описанию/IPN (фильтр ?search=...) + по категории
+    def search_parts(self, *, search: str | None = None, category: int | None = None,
+                     assembly: bool | None = None, **extra: Any) -> list[dict]:
+        params: dict[str, Any] = {}
+        if search:
+            params["search"] = search
+        if category is not None:
+            params["category"] = category
+        if assembly is not None:
+            params["assembly"] = assembly
+        params.update(extra)
+        return self._paginate(self.request("GET", "part/", params=params))
+
     def create_part(self, name: str, category: int | None = None, ipn: str = "",
                     description: str = "", **extra: Any) -> dict:
         body: dict[str, Any] = {"name": name, "description": description}
@@ -92,6 +108,35 @@ class InventreeClient:
     # --- BOM (структура донора: родитель -> дочерние части xN) ---
     def list_bom_items(self, part: int) -> list[dict]:
         return self._paginate(self.request("GET", "bom/", params={"part": part}))
+
+    def get_bom_subs(self, donor_part_id: int) -> list[dict]:
+        """Список дочерних Part-компонентов донора (через BOM).
+
+        Возвращает компоненты донора: [{part_id, name, quantity}].
+        InvenTree BOM item имеет поля `part` (родитель), `sub_part` (компонент),
+        `sub_part_detail` (вложенные данные part).
+        """
+        items = self.list_bom_items(donor_part_id)
+        out: list[dict] = []
+        for it in items:
+            detail = it.get("sub_part_detail") or {}
+            part_id = it.get("sub_part") or detail.get("pk")
+            cat_detail = detail.get("category_detail") or {}
+            out.append({
+                "part_id": part_id,
+                "name": detail.get("name") or it.get("reference") or str(part_id),
+                "quantity": it.get("quantity", 1),
+                "category": cat_detail.get("name", "") if cat_detail else "",
+            })
+        return out
+
+    # --- категории ---
+    def get_category(self, category_id: int) -> dict:
+        return self.request("GET", f"part/category/{category_id}/")
+
+    def category_name_map(self) -> dict[int, str]:
+        """Все категории: {pk: name}."""
+        return {c["pk"]: c.get("name", "") for c in self.list_categories()}
 
     def create_bom_item(self, parent_part: int, sub_part: int, quantity: float = 1,
                         reference: str = "") -> dict:

@@ -296,6 +296,60 @@ export default function PartDetail() {
       ) : (
         <p className="pd-muted">Сейчас нет активных предложений на эту деталь.</p>
       )}
+
+      {/* Мобильный sticky CTA-бар (UX-3): виден только < 768px, скрыт на десктопе через CSS */}
+      {noActiveOffers ? (
+        <div className="pd-sticky-cta">
+          {subStatus ? (
+            <button
+              type="button"
+              className="pd-cta pd-cta-bar pd-btn-cart"
+              onClick={unsubscribe}
+            >
+              ✓ Вы подписаны — уведомим о новом листинге
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="pd-cta pd-cta-bar pd-btn-cart"
+              onClick={subscribe}
+            >
+              🔔 Сообщить, когда появится
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="pd-sticky-cta">
+          <Link to="/deal" className="pd-cta pd-cta-bar">Купить со сделкой</Link>
+          {oneClickReady ? (
+            <button
+              type="button"
+              className="pd-cta pd-cta-bar pd-cta-secondary"
+              disabled={buying}
+              onClick={oneClickBuy}
+            >
+              {buying ? 'Оформление…' : '⚡ Купить в 1 клик'}
+            </button>
+          ) : best && best.price_rub != null ? (
+            <button
+              type="button"
+              className="pd-cta pd-cta-bar pd-cta-secondary"
+              disabled={has(best.id)}
+              onClick={() =>
+                add({
+                  listing_id: best.id,
+                  title: best.title || data.name,
+                  price_rub: best.price_rub,
+                  condition: best.condition,
+                  seller_name: best.seller_name,
+                })
+              }
+            >
+              {has(best.id) ? '✓ В корзине' : 'В корзину'}
+            </button>
+          ) : null}
+        </div>
+      )}
     </div>
   )
 }

@@ -13,7 +13,12 @@ class Settings(BaseSettings):
 
     # InvenTree — source of truth инвентаря
     inventree_base_url: str = "http://127.0.0.1:8000"
-    inventree_token: str = ""  # Authorization: Token <key> (см. docs/data-model.md)
+    inventree_token: str = ""  # Authorization: Token *** (см. docs/data-model.md)
+
+    # Короткий TTL-кэш чтений InvenTree (каталог/категории/сток/BOM), сек.
+    # InvenTree для пары секунд считается согласованным источником; листинги
+    # и цены живут в нашей БД и кэшу не подлежат. 5-15с — на выбор оператора.
+    inventree_cache_ttl_seconds: float = 10.0
 
     # ЮKassa (Безопасная сделка), СДЭК — заполнить позже (MVP-скелет)
     yookassa_shop_id: str = ""

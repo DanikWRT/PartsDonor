@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -127,16 +128,22 @@ async def _resolve_brand_model_parts(
         stmt = stmt.where(DeviceSchema.model.ilike(f"%{model}%"))
     schemas = (await db.execute(stmt)).scalars().all()
 
-    part_ids: set[int] = set()
-    for s in schemas:
-        donor_id = s.inventree_donor_part_id
-        if donor_id is None:
-            continue
-        part_ids.add(donor_id)
-        for comp in await inventree.get_bom_subs(donor_id):
-            cid = comp.get("part_id")
-            if cid is not None:
-                part_ids.add(int(cid))
+    # доноры всех схем — их BOM-компоненты тянем ПАРАЛЛЕЛЬНО (asyncio.gather),
+    # не последовательно (это был главный узкий бутылочек бренд/модель-запросов)
+    donor_ids = [s.inventree_donor_part_id for s in schemas if s.inventree_donor_part_id is not None]
+    part_ids: set[int] = set(donor_ids)
+    if donor_ids:
+        bom_lists = await asyncio.gather(
+            *(inventree.get_bom_subs(d) for d in donor_ids),
+            return_exceptions=True,
+        )
+        for bom in bom_lists:
+            if isinstance(bom, BaseException):
+                continue  # один сбой BOM не роняет весь каталог бренд/модели
+            for comp in bom:
+                cid = comp.get("part_id")
+                if cid is not None:
+                    part_ids.add(int(cid))
     return part_ids
 
 
@@ -177,11 +184,36 @@ async def catalog(
     # Ограничение множества деталей по бренду/модели телефона (через наш слой)
     brand_model_parts = await _resolve_brand_model_parts(db, brand, model)
 
-    parts = await inventree.search_parts(search=q, category=category)
+    # Параллельно запускаем все НЕЗАВИСИМЫЕ InvenTree-чтения и DB-чтение.
+    # list_categories вызываем ОДИН раз и используем для обоих целей:
+    # фильтра по category_name И для cat_names.
+    cats_task = inventree.list_categories()
+    cat_names_task = inventree.category_name_map()
+    search_task = inventree.search_parts(search=q, category=category)
+    stock_task = inventree.list_stock()
+    listings_task = db.execute(
+        select(Listing)
+        .options(selectinload(Listing.seller))
+        .where(Listing.status == ListingStatus.active)
+        .order_by(Listing.price_rub.asc())
+    )
+
+    results = await asyncio.gather(
+        search_task,
+        cats_task,
+        cat_names_task,
+        stock_task,
+        listings_task,
+        return_exceptions=True,
+    )
+    parts = results[0] if not isinstance(results[0], BaseException) else []
+    cats = results[1] if not isinstance(results[1], BaseException) else []
+    cat_names = results[2] if not isinstance(results[2], BaseException) else {}
+    stock_parts = {s["part"] for s in (results[3] if not isinstance(results[3], BaseException) else [])}
+    listing_rows = (results[4] if not isinstance(results[4], BaseException) else []).scalars().all()
 
     # Поиск "типа" (категории) по имени: собираем категории, начинающиеся/содержащие имя
     if category_name:
-        cats = await inventree.list_categories()
         match_ids = {
             c["pk"] for c in cats if category_name.lower() in (c.get("name") or "").lower()
         }
@@ -193,25 +225,11 @@ async def catalog(
             return []
         parts = [p for p in parts if int(p.get("pk", 0)) in brand_model_parts]
 
-    cat_names = await inventree.category_name_map()
-
-    # Все активные листинги + продавец (для рейтинга/гарантии)
-    listing_rows = (
-        await db.execute(
-            select(Listing)
-            .options(selectinload(Listing.seller))
-            .where(Listing.status == ListingStatus.active)
-            .order_by(Listing.price_rub.asc())
-        )
-    ).scalars().all()
     # лучший (самый дешёвый) активный листинг по каждой части
     listing_by_part: dict[int | None, Listing | None] = {}
     for l in listing_rows:
         if l.inventree_part_id is not None and l.inventree_part_id not in listing_by_part:
             listing_by_part[l.inventree_part_id] = l
-
-    # В наличии (StockItem): часть встречается на складе
-    stock_parts = {s["part"] for s in await inventree.list_stock()}
 
     items: list[CatalogItem] = []
     for p in parts:

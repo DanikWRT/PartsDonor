@@ -81,3 +81,14 @@ X-Signature: <HMAC-SHA256 base64 тела на PARTSDONOR_YOOKASSA_NOTIFICATION_
 Нет. Live-ключи ЮKassa не нужны — тестовый режим. При появлении shop_id/secret
 и webhook-секрета поведение переключается на реальный API ЮKassa автоматически
 (по конфигу), без изменения кода.
+
+## Re-verify после B8 (auth) — 2026-09-22
+После карты B8 (JWT RBAC) на POST /listings и /deals/{id}/pay появилась авторизация,
+поэтому исходный `_i2_verify.py` даёт на listings 401 (устаревший харнесс, не дефект
+I2-кода). Приёмка перепройдена на живом backend 127.0.0.1:8001 через
+`backend/_i2_verify_auth.py` (seller-JWT с мастерской для листинга, admin-JWT для
+`/pay`; вебхук аутентифицируется только HMAC, не JWT): **21/21 PASS** — платёж на холд,
+`payment.succeeded` двигает `created→escrow_paid` + escrow `created→paid`, неверная/
+пустая подпись → 400, повторный вебхук идемпотентен. ВАЖНО при запуске backend'а:
+экспортировать `PARTSDONOR_YOOKASSA_NOTIFICATION_SECRET` (в тесте:
+`i2-test-secret-0123456789abcdef`) — иначе секрет пуст и любая подпись даёт 400.

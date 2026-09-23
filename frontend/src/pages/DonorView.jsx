@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { authFetch } from '../auth.jsx'
 
 // Развёртка телефона (exploded view) + список запчастей.
 // Данные: GET /api/donor/{brand}/{model} →
@@ -524,12 +525,9 @@ export default function DonorView() {
     // optimistic update
     setListings((ls) => ls.map((l) => (l.id === comp.listing.id ? { ...l, status } : l)))
     try {
-      const r = await fetch(`/api/listings/${comp.listing.id}`, {
+      const r = await authFetch(`/api/listings/${comp.listing.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('pd-token')}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       })
       if (!r.ok) throw new Error(`HTTP ${r.status}`)

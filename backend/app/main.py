@@ -38,6 +38,8 @@ from app.models import (
     Deal,
     DealStatus,
     DeviceSchema,
+    DonorLot,
+    DonorRequest,
     Listing,
     ListingStatus,
     ListingSubscription,
@@ -75,6 +77,11 @@ from app.schemas import (
     SubscriptionStatusOut,
     NotificationOut,
     WebhookAck,
+    DonorLotIn,
+    DonorLotOut,
+    DonorLotDetail,
+    DonorRequestIn,
+    DonorRequestOut,
 )
 from app.yookassa_client import new_payment_id, yookassa
 
@@ -389,8 +396,332 @@ async def get_donor(donor_part_id: int, db: AsyncSession = Depends(get_db)) -> D
     return DonorSchema(
         brand=donor.get("category_detail", {}).get("name", "") if donor.get("category_detail") else "",
         model=donor.get("name", str(donor_part_id)),
-        exploded_view_url="",  # изображение развёртки подключим на фронте отдельно
+        exploded_view_url="",
         components=components,
+    )
+
+
+# ============================== DONOR LOTS (S1) ==============================
+
+
+@router.get("/donor-lots", response_model=list[DonorLotOut])
+async def list_donor_lots(
+    status: ListingStatus | None = Query(default=None),
+    brand: str | None = Query(default=None),
+    model: str | None = Query(default=None),
+    only_available: bool = Query(default=False),
+    db: AsyncSession = Depends(get_db),
+) -> list[DonorLotOut]:
+    """Список донор-комплектов с фильтрами."""
+    stmt = select(DonorLot).options(
+        selectinload(DonorLot.seller),
+        selectinload(DonorLot.device_schema),
+    )
+    if status is not None:
+        stmt = stmt.where(DonorLot.status == status)
+    if only_available:
+        stmt = stmt.where(DonorLot.status == ListingStatus.active)
+    if brand:
+        stmt = stmt.join(DeviceSchema).where(DeviceSchema.brand.ilike(f"%{brand}%"))
+    if model:
+        stmt = stmt.join(DeviceSchema).where(DeviceSchema.model.ilike(f"%{model}%"))
+    records = list((await db.execute(stmt)).scalars().all())
+    out: list[DonorLotOut] = []
+    for lot in records:
+        component_count = 0
+        if lot.device_schema and lot.device_schema.inventree_donor_part_id:
+            try:
+                bom = await inventree.get_bom_subs(lot.device_schema.inventree_donor_part_id)
+                component_count = len(bom) if isinstance(bom, list) else 0
+            except Exception:
+                component_count = 0
+        listing_id = None
+        listing_res = await db.execute(select(Listing).where(Listing.donor_lot_id == lot.id))
+        listing = listing_res.scalar_one_or_none()
+        if listing:
+            listing_id = listing.id
+        seller_name = lot.seller.name if lot.seller else None
+        seller_rating = lot.seller.rating if lot.seller else None
+        seller_verified = lot.seller.verified if lot.seller else None
+        out.append(DonorLotOut(
+            id=lot.id,
+            device_schema_id=lot.device_schema_id,
+            brand=lot.device_schema.brand if lot.device_schema else "",
+            model=lot.device_schema.model if lot.device_schema else "",
+            donor_part_id=lot.device_schema.inventree_donor_part_id if lot.device_schema else None,
+            title=lot.title,
+            price_rub=lot.price_rub,
+            condition=lot.condition,
+            provenance=lot.provenance,
+            status=lot.status,
+            seller_name=seller_name,
+            seller_rating=seller_rating,
+            seller_verified=seller_verified,
+            component_count=component_count,
+            listing_id=listing_id,
+            created_at=lot.created_at,
+        ))
+    return out
+
+
+@router.get("/donor-lots/{id}", response_model=DonorLotDetail)
+async def get_donor_lot(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin, UserRole.buyer)),
+) -> DonorLotDetail:
+    """Карточка донор-комплекта с развёрткой."""
+    lot = await db.get(DonorLot, id)
+    if lot is None:
+        raise HTTPException(status_code=404, detail="Donor lot not found")
+    components: list[DonorComponent] = []
+    if lot.device_schema and lot.device_schema.inventree_donor_part_id:
+        try:
+            bom_subs = await inventree.get_bom_subs(lot.device_schema.inventree_donor_part_id)
+            listing_by_part = {
+                l.inventree_part_id: l
+                for l in (await db.execute(select(Listing)).scalars().all())
+                if l.inventree_part_id is not None
+            }
+            for comp in bom_subs:
+                part_id = comp["part_id"]
+                listing = listing_by_part.get(part_id)
+                components.append(DonorComponent(
+                    slot=comp["name"],
+                    title=comp["name"],
+                    part_id=part_id,
+                    price_rub=listing.price_rub if listing else 0,
+                    status=listing.status.value if listing else "none",
+                    hotspot={},
+                ))
+        except Exception:
+            pass
+    if lot.device_schema and lot.device_schema.hotspots:
+        for c in components:
+            hs = lot.device_schema.hotspots.get(c.slot)
+            if hs:
+                c.hotspot = hs
+    requests_out = None
+    if user.role in (UserRole.seller, UserRole.admin) and user.company_id == lot.seller_id:
+        reqs = await db.execute(select(DonorRequest).where(DonorRequest.donor_lot_id == id))
+        reqs_list = reqs.scalars().all()
+        requests_out = []
+        for r in reqs_list:
+            buyer = await db.get(Company, r.buyer_company_id)
+            requests_out.append(DonorRequestOut(
+                id=r.id,
+                donor_lot_id=r.donor_lot_id,
+                buyer_company_id=r.buyer_company_id,
+                seller_company_id=r.seller_company_id,
+                amount_rub=r.amount_rub,
+                message=r.message,
+                status=r.status,
+                created_at=r.created_at,
+                buyer_name=buyer.name if buyer else None,
+            ))
+    listing_id = None
+    listing_res = await db.execute(select(Listing).where(Listing.donor_lot_id == id))
+    listing = listing_res.scalar_one_or_none()
+    if listing:
+        listing_id = listing.id
+    return DonorLotDetail(
+        id=lot.id,
+        device_schema_id=lot.device_schema_id,
+        brand=lot.device_schema.brand if lot.device_schema else "",
+        model=lot.device_schema.model if lot.device_schema else "",
+        donor_part_id=lot.device_schema.inventree_donor_part_id if lot.device_schema else None,
+        title=lot.title,
+        price_rub=lot.price_rub,
+        condition=lot.condition,
+        provenance=lot.provenance,
+        status=lot.status,
+        seller_name=lot.seller.name if lot.seller else None,
+        seller_rating=lot.seller.rating if lot.seller else None,
+        seller_verified=lot.seller.verified if lot.seller else None,
+        component_count=len(components),
+        listing_id=listing_id,
+        created_at=lot.created_at,
+        exploded_url=lot.device_schema.exploded_view_url if lot.device_schema else "",
+        components=components,
+        requests=requests_out,
+    )
+
+
+@router.post("/donor-lots", response_model=DonorLotOut, status_code=201)
+async def create_donor_lot(
+    payload: DonorLotIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
+) -> DonorLot:
+    if user.company_id is None:
+        raise HTTPException(status_code=403, detail="У пользователя нет компании")
+    schema = await db.get(DeviceSchema, payload.device_schema_id)
+    if schema is None:
+        raise HTTPException(status_code=400, detail="DeviceSchema not found")
+    record = DonorLot(
+        device_schema_id=payload.device_schema_id,
+        seller_id=user.company_id,
+        title=payload.title,
+        price_rub=payload.price_rub,
+        condition=payload.condition,
+        provenance=payload.provenance,
+        status=ListingStatus.active,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
+@router.post("/donor-lots/{id}/request", response_model=DonorRequestOut, status_code=201)
+async def create_donor_request(
+    id: uuid.UUID,
+    payload: DonorRequestIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> DonorRequestOut:
+    lot = await db.get(DonorLot, id)
+    if lot is None:
+        raise HTTPException(status_code=404, detail="Donor lot not found")
+    if lot.status == ListingStatus.sold:
+        raise HTTPException(status_code=400, detail="Донор уже продан")
+    if user.company_id is None:
+        raise HTTPException(status_code=400, detail="У пользователя нет компании")
+    buyer = await db.get(Company, user.company_id)
+    if buyer is None:
+        raise HTTPException(status_code=400, detail="buyer_company_id: Company not found")
+    req = DonorRequest(
+        donor_lot_id=id,
+        buyer_company_id=user.company_id,
+        seller_company_id=lot.seller_id,
+        amount_rub=payload.amount_rub,
+        message=payload.message,
+        status="pending",
+    )
+    db.add(req)
+    await db.commit()
+    await db.refresh(req)
+    buyer_name = buyer.name if buyer else None
+    return DonorRequestOut(
+        id=req.id,
+        donor_lot_id=req.donor_lot_id,
+        buyer_company_id=req.buyer_company_id,
+        seller_company_id=req.seller_company_id,
+        amount_rub=req.amount_rub,
+        message=req.message,
+        status=req.status,
+        created_at=req.created_at,
+        buyer_name=buyer_name,
+    )
+
+
+@router.get("/donor-lots/{id}/requests", response_model=list[DonorRequestOut])
+async def list_donor_requests(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
+) -> list[DonorRequestOut]:
+    lot = await db.get(DonorLot, id)
+    if lot is None:
+        raise HTTPException(status_code=404, detail="Donor lot not found")
+    if user.company_id != lot.seller_id and user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="No access")
+    reqs = await db.execute(select(DonorRequest).where(DonorRequest.donor_lot_id == id))
+    out: list[DonorRequestOut] = []
+    for r in reqs.scalars().all():
+        buyer = await db.get(Company, r.buyer_company_id)
+        out.append(DonorRequestOut(
+            id=r.id,
+            donor_lot_id=r.donor_lot_id,
+            buyer_company_id=r.buyer_company_id,
+            seller_company_id=r.seller_company_id,
+            amount_rub=r.amount_rub,
+            message=r.message,
+            status=r.status,
+            created_at=r.created_at,
+            buyer_name=buyer.name if buyer else None,
+        ))
+    return out
+
+
+@router.post("/donor-lots/{id}/deals", response_model=OneClickDealOut, status_code=201)
+async def donor_lot_deal(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> OneClickDealOut:
+    if user.company_id is None:
+        raise HTTPException(status_code=400, detail="У пользователя нет компании")
+    company = await db.get(Company, user.company_id)
+    if company is None:
+        raise HTTPException(status_code=400, detail="У пользователя нет компании")
+    if not company.verified:
+        raise HTTPException(status_code=403, detail="Аккаунт не верифицирован — покупка целиком недоступна")
+    lot = await db.get(DonorLot, id)
+    if lot is None:
+        raise HTTPException(status_code=404, detail="Donor lot not found")
+    if lot.status == ListingStatus.sold:
+        raise HTTPException(status_code=400, detail="Донор уже продан")
+    profile = await db.execute(select(BuyerProfile).where(BuyerProfile.company_id == company.id))
+    profile = profile.scalar_one_or_none()
+    if profile is None or not profile.billing_payer_name or not profile.billing_inn or not profile.default_address:
+        raise HTTPException(status_code=400, detail="Заполните реквизиты плательщика (наименование, ИНН) и адрес доставки для покупки целиком")
+    listing_res = await db.execute(select(Listing).where(Listing.donor_lot_id == id))
+    whole_listing = listing_res.scalar_one_or_none()
+    if whole_listing is None:
+        whole_listing = Listing(
+            inventree_part_id=lot.device_schema.inventree_donor_part_id,
+            donor_lot_id=lot.id,
+            seller_id=lot.seller_id,
+            device_schema_id=lot.device_schema_id,
+            title=lot.title,
+            price_rub=lot.price_rub,
+            condition=lot.condition,
+            provenance=lot.provenance,
+            status=ListingStatus.active,
+        )
+        db.add(whole_listing)
+        await db.flush()
+    seller_company_id = lot.seller_id
+    amount = lot.price_rub
+    deal = Deal(
+        listing_id=whole_listing.id,
+        buyer_company_id=company.id,
+        seller_company_id=seller_company_id,
+        status=DealStatus.created,
+        amount_rub=amount,
+        yookassa_payment_id=None,
+        escrow_status="created",
+        shipping_address=profile.default_address,
+        transitions=[],
+    )
+    db.add(deal)
+    await db.flush()
+    payment_id = new_payment_id()
+    payment = yookassa.create_safe_deal_payment(
+        amount_rub=amount,
+        deal_id=str(deal.id),
+        payment_id=payment_id,
+        return_url="https://partsdonor.local/pay/success",
+    )
+    deal.yookassa_payment_id = payment.get("id") or payment_id
+    whole_listing.status = ListingStatus.negotiated
+    lot.status = ListingStatus.negotiated
+    await db.commit()
+    await db.refresh(deal)
+    pay_out = DealPayOut(
+        payment_id=deal.yookassa_payment_id or payment_id,
+        deal_id=deal.id,
+        status=payment.get("status", "pending"),
+        confirmation_url=payment.get("confirmation", {}).get("confirmation_url") if isinstance(payment.get("confirmation"), dict) else None,
+        test=bool(payment.get("test", yookassa.test_mode)),
+    )
+    return OneClickDealOut(
+        deal=deal,
+        payment=pay_out,
+        billing_payer_name=profile.billing_payer_name,
+        billing_inn=profile.billing_inn,
+        delivery_address=profile.default_address,
     )
 
 

@@ -164,6 +164,10 @@ class Listing(Base):
     device_schema_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("device_schemas.id"), nullable=True
     )
+    # Цельный листинг донора (донор-комплект целиком)
+    donor_lot_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("donor_lots.id"), nullable=True
+    )
 
     title: Mapped[str] = mapped_column(String(200))
     price_rub: Mapped[float] = mapped_column(Float)
@@ -178,6 +182,7 @@ class Listing(Base):
 
     seller: Mapped[Company | None] = relationship(back_populates="listings")
     deals: Mapped[list["Deal"]] = relationship(back_populates="listing")
+    donor_lot: Mapped["DonorLot | None"] = relationship(back_populates="listing")
 
 
 class Deal(Base):
@@ -281,3 +286,47 @@ class Review(Base):
     rating: Mapped[int] = mapped_column(Integer, default=5)  # 1..5
     comment: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DonorLot(Base):
+    """Донор-комплект на продажу целиком (S1)."""
+
+    __tablename__ = "donor_lots"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    device_schema_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("device_schemas.id"), nullable=False)
+    seller_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(200))
+    price_rub: Mapped[float]
+    condition: Mapped[PartCondition] = mapped_column(
+        Enum(PartCondition, name="donor_part_condition"), default=PartCondition.untested
+    )
+    provenance: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[ListingStatus] = mapped_column(
+        Enum(ListingStatus, name="donor_lot_status"), default=ListingStatus.active
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    device_schema: Mapped[DeviceSchema] = relationship()
+    seller: Mapped[Company] = relationship()
+    requests: Mapped[list["DonorRequest"]] = relationship(back_populates="donor_lot")
+    listing: Mapped[Listing | None] = relationship(back_populates="donor_lot")
+
+
+class DonorRequest(Base):
+    """Заявка/торг покупателя на донор-комплект (S1)."""
+
+    __tablename__ = "donor_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    donor_lot_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("donor_lots.id"), nullable=False)
+    buyer_company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), nullable=False)
+    seller_company_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("companies.id"), nullable=True)
+    amount_rub: Mapped[float]
+    message: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    donor_lot: Mapped[DonorLot] = relationship(back_populates="requests")
+    buyer: Mapped[Company] = relationship(foreign_keys=[buyer_company_id])
+    seller: Mapped[Company | None] = relationship(foreign_keys=[seller_company_id])

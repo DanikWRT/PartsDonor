@@ -197,6 +197,60 @@ class WebhookAck(BaseModel):
 # --- Review ---
 
 
+class DonorLotIn(BaseModel):
+    device_schema_id: uuid.UUID
+    title: str
+    price_rub: float = Field(gt=0)
+    condition: PartCondition = PartCondition.untested
+    provenance: str = ""
+
+
+class DonorLotOut(BaseModel):
+    id: uuid.UUID
+    device_schema_id: uuid.UUID
+    brand: str
+    model: str
+    donor_part_id: int | None
+    title: str
+    price_rub: float
+    condition: PartCondition
+    provenance: str
+    status: ListingStatus
+    seller_name: str | None
+    seller_rating: float | None
+    seller_verified: bool | None
+    component_count: int
+    listing_id: uuid.UUID | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DonorLotDetail(DonorLotOut):
+    exploded_url: str
+    components: list[DonorComponent]
+    requests: list["DonorRequestOut"] | None = None
+
+
+class DonorRequestIn(BaseModel):
+    amount_rub: float = Field(gt=0)
+    message: str = ""
+
+
+class DonorRequestOut(BaseModel):
+    id: uuid.UUID
+    donor_lot_id: uuid.UUID
+    buyer_company_id: uuid.UUID
+    seller_company_id: uuid.UUID | None
+    amount_rub: float
+    message: str
+    status: str
+    created_at: datetime
+    buyer_name: str | None
+
+    model_config = {"from_attributes": True}
+
+
 class ReviewIn(BaseModel):
     rating: int = Field(ge=1, le=5, default=5)
     comment: str = ""

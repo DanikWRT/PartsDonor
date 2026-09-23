@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# PartsDonor F6 executor via Pi headless (reviews/ratings UI, adaptive)
+set -e
+cd /home/aifactory/PartsDonor
+OUT=/home/aifactory/PartsDonor/frontend/_f6_pi_run.log
+PI_PROMPT='Read /home/aifactory/PartsDonor/frontend/_f6_spec.md. Execute the PartsDonor F6 frontend module exactly as specified: a reviews/ratings block for the seller, adaptive, using backend B7 data on live http://127.0.0.1:8001 (vite /api proxy). Add a "Отзывы о продавце" block to the deal screen(s) in frontend/src/pages/Deal.jsx where deal.seller_company_id is available: fetch GET /companies/{id}/rating and GET /reviews?seller_id=, render stars+avg rating+review count+list of reviews (stars, comment, created_at ru-RU). Add a "Оставить отзыв" form (click 1..5 stars + textarea + submit) that POSTs /reviews {rating, comment, seller_id} with Bearer token from localStorage "pd-token" (like Deal.jsx already does); after submit refetch rating+reviews and show success/error; if no token show a gentle "нужен вход" hint. Add new CSS (prefix pd-) to frontend/src/styles.css, adaptive (1 column at 390px, no horizontal overflow). Do NOT touch backend or the seller Cabinet.jsx. Run npm run build and fix until it exits 0. Then verify live: create a review for an existing seller_id via the served app or curl through /api, confirm it appears in GET /reviews. Verify adaptive 390px/1440px scrollWidth==clientWidth. Take screenshots pd-f6-reviews-desktop.png and pd-f6-reviews-mobile.png into /home/aifactory/PartsDonor/. Report list of changed files, build status, verified checks, and screenshot absolute paths. Keep output concise.'
+pi -p "$PI_PROMPT" --provider wormsoft --model deepseek-ai/deepseek-v4-pro > "$OUT" 2>&1
+echo "PI_EXIT=$?" >> "$OUT"

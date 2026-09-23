@@ -295,6 +295,64 @@ function BackcoverLayer({ w, accent, uid }) {
   )
 }
 
+// UX-4: 2D технический чертёж для плоских деталей (вид сверху).
+// Компактный чертёж в горизонтальном поясе (как 3D-слой): контур + размерные
+// линии + отверстия + центровые оси + подпись размера. Хотспот НЕ перекрывает
+// соседние слои (раньше высокий портретный SVG раздувал кнопку на ~370px).
+function FlatDrawing({ slot, title }) {
+  const accent = SLOT_META[slot]?.accent || '#94a3b8'
+  const label = SLOT_META[slot]?.label || title || slot
+  // Вид сверху: широкая плоская деталь (экран/стекло/панель) в горизонтальном поясе.
+  const W = 200, H = 26, RX = 7
+  const size = slot === 'display' ? '6.1\u2033' : slot === 'backcover' ? '156×78' : '60×100'
+  return (
+    <svg className="pd-flat-svg" viewBox={`-115 -30 230 60`} aria-hidden="true">
+      {/* центровые оси (пунктир) */}
+      <line x1={-112} y1={0} x2={112} y2={0} stroke={accent} strokeWidth="0.5" strokeDasharray="3 4" opacity="0.5" />
+      <line x1={0} y1={-26} x2={0} y2={26} stroke={accent} strokeWidth="0.5" strokeDasharray="3 4" opacity="0.5" />
+      {/* внешний контур */}
+      <rect x={-W / 2} y={-H / 2} width={W} height={H} rx={RX} fill="rgba(255,255,255,0.05)" stroke={accent} strokeWidth="1.4" />
+      {/* внутренний контур (штрих) */}
+      <rect x={-W / 2 + 4} y={-H / 2 + 4} width={W - 8} height={H - 8} rx={RX - 2} fill="none" stroke={accent} strokeWidth="0.7" strokeDasharray="4 3" opacity="0.55" />
+      {/* размерная линия (длина) сверху */}
+      <line x1={-W / 2 - 4} y1={-18} x2={W / 2 + 4} y2={-18} stroke={accent} strokeWidth="0.7" />
+      <line x1={-W / 2 - 4} y1={-14} x2={-W / 2 - 4} y2={-22} stroke={accent} strokeWidth="0.7" />
+      <line x1={W / 2 + 4} y1={-14} x2={W / 2 + 4} y2={-22} stroke={accent} strokeWidth="0.7" />
+      <text x={0} y={-21} textAnchor="middle" fontSize="7" fill={accent} fontFamily="inherit">{size}</text>
+      {/* размерная линия (высота) слева */}
+      <line x1={-W / 2 - 14} y1={-H / 2 - 2} x2={-W / 2 - 14} y2={H / 2 + 2} stroke={accent} strokeWidth="0.7" />
+      <line x1={-W / 2 - 11} y1={-H / 2 - 2} x2={-W / 2 - 17} y2={-H / 2 - 2} stroke={accent} strokeWidth="0.7" />
+      <line x1={-W / 2 - 11} y1={H / 2 + 2} x2={-W / 2 - 17} y2={H / 2 + 2} stroke={accent} strokeWidth="0.7" />
+      <text x={-W / 2 - 17} y={2} textAnchor="middle" fontSize="6.5" fill={accent} fontFamily="inherit" transform={`rotate(-90 -${W / 2 + 17} 0)`}>{slot === 'display' ? 'H' : 'B'}</text>
+      {/* отверстия/пазы (сборочные зоны) */}
+      <g fill="none" stroke={accent} strokeWidth="0.7">
+        {slot === 'display' && (<>
+          <circle cx={-38} cy={0} r={4} />
+          <circle cx={-14} cy={12} r={2.5} />
+          <circle cx={14} cy={-12} r={2.5} />
+          <circle cx={38} cy={0} r={4} />
+        </>)}
+        {slot !== 'display' && (<>
+          <circle cx={-40} cy={0} r={4} />
+          <circle cx={-16} cy={-12} r={2.5} />
+          <circle cx={16} cy={12} r={2.5} />
+          <circle cx={40} cy={0} r={4} />
+        </>)}
+      </g>
+      {/* флажки крепления */}
+      <g fill="none" stroke={accent} strokeWidth="0.7">
+        {slot === 'display' ? (<>
+          <path d="M -30 -13 L -30 -22" />
+          <path d="M 30 -13 L 30 -22" />
+        </>) : (<>
+          <path d="M -32 -13 L -32 -22" />
+          <path d="M 32 -13 L 32 -22" />
+        </>)}
+      </g>
+    </svg>
+  )
+}
+
 // Рисунок слоя по типу слота.
 function SlotLayer({ slot, w, skew }) {
   const uid = `lyr-${slot}`
@@ -317,14 +375,27 @@ function SlotLayer({ slot, w, skew }) {
 const VIEW_W = 300, VIEW_H = 460, PAD = 26, LYR_W = 210
 
 // F7: нормализация длинного слота/названия в короткий ключ геометрии слоя.
+// UX-4: сравнение регистронезависимое — «Основная камера» раньше не
+// матчилось на «Камера», и слой уезжал в дефолтную точку (y=0.5).
 function normalizeSlot(raw) {
-  const s = String(raw || '')
-  if (s.includes('Дисплей')) return 'display'
-  if (s.includes('Материнск') || s.includes('Плата')) return 'board'
-  if (s.includes('Аккумулятор')) return 'battery'
-  if (s.includes('Камера')) return 'camera'
-  if (s.includes('Корпус')) return 'backcover'
+  const s = String(raw || '').toLowerCase()
+  if (s.includes('дисплей')) return 'display'
+  if (s.includes('материнск') || s.includes('плата')) return 'board'
+  if (s.includes('аккумулятор')) return 'battery'
+  if (s.includes('камера')) return 'camera'
+  if (s.includes('корпус')) return 'backcover'
   return null // fallback: generic rect (SlotLayer default)
+}
+
+// UX-4: детекция типа детали — плоская vs объёмная.
+// Плоские (2D-чертёж + hotspot): display, экран, стекло, крышка, панель, пластина.
+// Всё остальное — объёмное (3D-развёртка).
+function isFlat(slotKey, rawName) {
+  const s = `${slotKey || ''} ${rawName || ''}`.toLowerCase()
+  if (s.includes('display') || s.includes('дисплей') || s.includes('экран') || s.includes('screen')) return true
+  if (s.includes('backcover') || s.includes('корпус') || s.includes('стекл') || s.includes('glass')) return true
+  if (s.includes('крышк') || s.includes('задн') || s.includes('панел') || s.includes('пластин') || s.includes('фронт')) return true
+  return false
 }
 
 function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUrl }) {
@@ -359,23 +430,28 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
         const isSel = c.slot === selectedKey
         const layerW = (LYR_W / VIEW_W) * 100
         const persp = (i - (sorted.length - 1) / 2) * 5
+        const flat = isFlat(c.slot, c.title)
         return (
           <button
             key={`${c.slot}-${c.part_id ?? i}`}
             type="button"
-            className={`pd-layer-btn ${isSel ? 'selected' : ''}`}
+            className={`${flat ? 'pd-flat-hotspot' : 'pd-layer-btn'} ${isSel ? 'selected' : ''}`}
             style={{ left: `${pctX(c, i)}%`, top: `${pctY(c)}%`, width: `${layerW}%` }}
             onClick={() => onSelect(c)}
             aria-pressed={isSel}
             title={c.title || SLOT_META[c.slot]?.label}
           >
-            <svg viewBox={`${-LYR_W / 2 - 12} ${-30} ${LYR_W + 24} 60`} className="pd-layer-svg" preserveAspectRatio="none">
-              <SlotLayer slot={c.slot} w={LYR_W} skew={persp} />
-            </svg>
-            <span className={`pd-layer-tag ${dotCls(c)}`}>
+            {flat ? (
+              <FlatDrawing slot={c.slot} title={c.title} />
+            ) : (
+              <svg viewBox={`${-LYR_W / 2 - 12} ${-30} ${LYR_W + 24} 60`} className="pd-layer-svg" preserveAspectRatio="none">
+                <SlotLayer slot={c.slot} w={LYR_W} skew={persp} />
+              </svg>
+            )}
+            <span className={`${flat ? 'pd-flat-tag' : 'pd-layer-tag'} ${dotCls(c)}`}>
               {SLOT_META[c.slot]?.label || c.title || c.slot}
             </span>
-            <span className={`pd-dot ${dotCls(c)}`} />
+            <span className={`${flat ? 'pd-flat-dot' : 'pd-dot'} ${dotCls(c)}`} />
           </button>
         )
       })}
@@ -471,6 +547,8 @@ export default function DonorView() {
   useEffect(() => {
     // F7: /donor/:brand/:model → находим schema по brand/model, берём
     // inventree_donor_part_id и грузим GET /api/donor/{donor_part_id}.
+    // UX-4: координаты слотов (hotspots) лежат в schema, а не в /api/donor —
+    // подмешиваем их в данные донора, иначе все слои схлопываются в одну точку.
     fetch('/api/device-schemas')
       .then((r) => (r.ok ? r.json() : []))
       .then((schemas) => {
@@ -480,10 +558,18 @@ export default function DonorView() {
           (s) => norm(s.brand) === norm(brand) && norm(s.model) === norm(model),
         )
         const donorId = schema?.inventree_donor_part_id
-        if (!donorId) return {}
-        return fetch(`/api/donor/${donorId}`).then((r) => (r.ok ? r.json() : {}))
+        if (!donorId) return { schema }
+        return fetch(`/api/donor/${donorId}`)
+          .then((r) => (r.ok ? r.json() : {}))
+          .then((donor) => ({ schema, donor }))
       })
-      .then((d) => setData(d))
+      .then(({ schema, donor }) => {
+        if (!donor || !donor.components) { setData(null); return }
+        // Если у /api/donor нет hotspots — берём из schema (там точные координаты слотов).
+        const merged = { ...donor }
+        if (!merged.hotspots && schema?.hotspots) merged.hotspots = schema.hotspots
+        setData(merged)
+      })
       .catch((e) => console.error('load donor err', e))
     loadListings()
     const sync = () => setHasToken(!!localStorage.getItem('pd-token'))

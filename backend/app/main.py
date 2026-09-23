@@ -73,18 +73,18 @@ app = FastAPI(title="PartsDonor API", version="0.2.0")
 router = APIRouter()
 
 
-def _part_info(part_id):
+async def _part_info(part_id):
     if not part_id:
         return (None, None)
     try:
-        p = inventree.get_part(int(part_id))
+        p = await inventree.get_part(int(part_id))
     except Exception:
         return (None, None)
     name = p.get("name") or None
     cat_name = None
     raw = p.get("category")
     if isinstance(raw, int):
-        cat_name = inventree.category_name_map().get(raw)
+        cat_name = (await inventree.category_name_map()).get(raw)
     return (name, cat_name)
 
 
@@ -123,7 +123,7 @@ async def _resolve_brand_model_parts(
         if donor_id is None:
             continue
         part_ids.add(donor_id)
-        for comp in inventree.get_bom_subs(donor_id):
+        for comp in await inventree.get_bom_subs(donor_id):
             cid = comp.get("part_id")
             if cid is not None:
                 part_ids.add(int(cid))
@@ -137,7 +137,7 @@ async def _resolve_brand_model_parts(
 async def health() -> HealthOut:
     return HealthOut(
         partsdonor_backend="ok",
-        inventree=inventree.health(),
+        inventree=await inventree.health(),
         inventree_base_url=inventree.base_url,
     )
 
@@ -167,11 +167,11 @@ async def catalog(
     # Ограничение множества деталей по бренду/модели телефона (через наш слой)
     brand_model_parts = await _resolve_brand_model_parts(db, brand, model)
 
-    parts = inventree.search_parts(search=q, category=category)
+    parts = await inventree.search_parts(search=q, category=category)
 
     # Поиск "типа" (категории) по имени: собираем категории, начинающиеся/содержащие имя
     if category_name:
-        cats = inventree.list_categories()
+        cats = await inventree.list_categories()
         match_ids = {
             c["pk"] for c in cats if category_name.lower() in (c.get("name") or "").lower()
         }
@@ -183,7 +183,7 @@ async def catalog(
             return []
         parts = [p for p in parts if int(p.get("pk", 0)) in brand_model_parts]
 
-    cat_names = inventree.category_name_map()
+    cat_names = await inventree.category_name_map()
 
     # Все активные листинги + продавец (для рейтинга/гарантии)
     listing_rows = (
@@ -201,7 +201,7 @@ async def catalog(
             listing_by_part[l.inventree_part_id] = l
 
     # В наличии (StockItem): часть встречается на складе
-    stock_parts = {s["part"] for s in inventree.list_stock()}
+    stock_parts = {s["part"] for s in await inventree.list_stock()}
 
     items: list[CatalogItem] = []
     for p in parts:
@@ -263,17 +263,17 @@ async def catalog_detail(
 ) -> CatalogDetail:
     """Карточка детали: сама Part из InvenTree + все активные листинги + рейтинг продавца."""
     try:
-        part = inventree.get_part(part_id)
+        part = await inventree.get_part(part_id)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=404, detail="Деталь не найдена в InvenTree") from exc
 
-    cat_names = inventree.category_name_map()
+    cat_names = await inventree.category_name_map()
     raw_cat = part.get("category")
     cat_name = ""
     if isinstance(raw_cat, int):
         cat_name = cat_names.get(raw_cat, "")
 
-    stock_parts = {s["part"] for s in inventree.list_stock()}
+    stock_parts = {s["part"] for s in await inventree.list_stock()}
 
     listings = (
         await db.execute(
@@ -326,11 +326,11 @@ async def catalog_detail(
 async def get_donor(donor_part_id: int, db: AsyncSession = Depends(get_db)) -> DonorSchema:
     """Развёртка донора: components по BOM InvenTree + цены/статусы с наших листингов."""
     try:
-        donor = inventree.get_part(donor_part_id)
+        donor = await inventree.get_part(donor_part_id)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=404, detail="Донор не найден в InvenTree") from exc
 
-    bom_subs = inventree.get_bom_subs(donor_part_id)
+    bom_subs = await inventree.get_bom_subs(donor_part_id)
 
     # активные листинги по part_id
     listing_by_part = {
@@ -437,7 +437,7 @@ async def list_listings(
         stmt = stmt.where(Listing.seller_id == seller_id)
     records = list((await db.execute(stmt)).scalars().all())
     for record in records:
-        record.part_name, record.part_category = _part_info(record.inventree_part_id)
+        record.part_name, record.part_category = await _part_info(record.inventree_part_id)
     return records
 
 
@@ -455,7 +455,7 @@ async def create_listing(
     data["seller_id"] = user.company_id
     if data.get("inventree_part_id"):
         try:
-            inventree.get_part(data["inventree_part_id"])
+            await inventree.get_part(data["inventree_part_id"])
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(
                 status_code=400,
@@ -463,7 +463,7 @@ async def create_listing(
             ) from exc
     if data.get("inventree_stock_id"):
         try:
-            inventree.request("GET", f"stock/{data['inventree_stock_id']}/")
+            await inventree.request("GET", f"stock/{data['inventree_stock_id']}/")
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(
                 status_code=400,
@@ -473,7 +473,7 @@ async def create_listing(
     db.add(record)
     await db.commit()
     await db.refresh(record)
-    record.part_name, record.part_category = _part_info(record.inventree_part_id)
+    record.part_name, record.part_category = await _part_info(record.inventree_part_id)
     return record
 
 
@@ -482,7 +482,7 @@ async def get_listing(listing_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     record = await db.get(Listing, listing_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Listing not found")
-    record.part_name, record.part_category = _part_info(record.inventree_part_id)
+    record.part_name, record.part_category = await _part_info(record.inventree_part_id)
     return record
 
 
@@ -503,7 +503,7 @@ async def update_listing(
         setattr(record, k, v)
     await db.commit()
     await db.refresh(record)
-    record.part_name, record.part_category = _part_info(record.inventree_part_id)
+    record.part_name, record.part_category = await _part_info(record.inventree_part_id)
     return record
 
 
@@ -831,4 +831,4 @@ async def on_startup() -> None:
     except Exception as exc:  # noqa: BLE001
         log.warning("[startup] create_all warning: %s", exc)
     log.info("[startup] PartsDonor API started. InvenTree=%s health=%s",
-             inventree.base_url, inventree.health())
+             inventree.base_url, await inventree.health())

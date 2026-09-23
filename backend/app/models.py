@@ -27,6 +27,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -241,6 +242,32 @@ class BuyerProfile(Base):
     )
 
     company: Mapped[Company | None] = relationship()
+
+
+class ListingSubscription(Base):
+    """Подписка компании на «Сообщить, когда появится» по детали (UX-2).
+
+    Одна подписка на (company_id, inventree_part_id). Когда по части появляется
+    НОВЫЙ активный листинг, подписка помечается notified=True + notified_at —
+    подписчик читает уведомления через GET /notifications.
+    """
+
+    __tablename__ = "listing_subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id"), index=True
+    )
+    inventree_part_id: Mapped[int] = mapped_column(Integer)
+    notified: Mapped[bool] = mapped_column(default=False)
+    notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "inventree_part_id", name="uq_subscription_company_part"),
+    )
 
 
 class Review(Base):

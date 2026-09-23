@@ -39,6 +39,7 @@ from app.models import (
     DeviceSchema,
     Listing,
     ListingStatus,
+    ListingSubscription,
     PartCondition,
     Review,
 )
@@ -68,6 +69,10 @@ from app.schemas import (
     ListingUpdate,
     ReviewIn,
     ReviewOut,
+    SubscriptionIn,
+    SubscriptionOut,
+    SubscriptionStatusOut,
+    NotificationOut,
     WebhookAck,
 )
 from app.yookassa_client import new_payment_id, yookassa
@@ -293,7 +298,9 @@ async def catalog_detail(
     listing_outs: list[CatalogListingOut] = []
     min_price = None
     min_condition = None
-    for l in active:
+    # UX-2: показываем ВСЕ листинги (active/negotiated/sold) — проданные видны
+    # на карточке со статусом "sold". min_price/min_condition — только по active.
+    for l in listings:
         seller = l.seller
         listing_outs.append(
             CatalogListingOut(
@@ -309,9 +316,10 @@ async def catalog_detail(
                 seller_verified=seller.verified if seller else None,
             )
         )
-        if min_price is None or l.price_rub < min_price:
-            min_price = l.price_rub
-            min_condition = l.condition.value
+        if l.status == ListingStatus.active:
+            if min_price is None or l.price_rub < min_price:
+                min_price = l.price_rub
+                min_condition = l.condition.value
 
     return CatalogDetail(
         id=part_id,
@@ -479,6 +487,26 @@ async def create_listing(
     await db.commit()
     await db.refresh(record)
     record.part_name, record.part_category = await _part_info(record.inventree_part_id)
+
+    # UX-2: новый активный листинг -> уведомляем подписчиков этой части.
+    # Сбой подписки никогда не должен ломать создание листинга.
+    if record.inventree_part_id is not None and record.status == ListingStatus.active:
+        try:
+            subs = (
+                await db.execute(
+                    select(ListingSubscription).where(
+                        ListingSubscription.inventree_part_id == record.inventree_part_id,
+                        ListingSubscription.notified == False,  # noqa: E712
+                    )
+                )
+            ).scalars().all()
+            for s in subs:
+                s.notified = True
+                s.notified_at = datetime.now(timezone.utc)
+            if subs:
+                await db.commit()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("subscription notify failed for part %s: %s", record.inventree_part_id, exc)
     return record
 
 
@@ -751,6 +779,113 @@ async def one_click_deal(
         billing_inn=profile.billing_inn,
         delivery_address=profile.default_address,
     )
+
+
+# ============================== ПОДПИСКИ И УВЕДОМЛЕНИЯ (UX-2) ==============================
+
+
+@router.get("/subscriptions", response_model=SubscriptionStatusOut)
+async def get_subscription(
+    part_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> SubscriptionStatusOut:
+    """Подписана ли компания пользователя на часть part_id."""
+    if user.company_id is None:
+        raise HTTPException(status_code=400, detail="У пользователя нет компании")
+    exists = (
+        await db.execute(
+            select(ListingSubscription).where(
+                ListingSubscription.company_id == user.company_id,
+                ListingSubscription.inventree_part_id == part_id,
+            )
+        )
+    ).scalar_one_or_none()
+    return SubscriptionStatusOut(subscribed=exists is not None, part_id=part_id)
+
+
+@router.post("/subscriptions", response_model=SubscriptionOut, status_code=201)
+async def create_subscription(
+    payload: SubscriptionIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> ListingSubscription:
+    """Подписаться на «Сообщить, когда появится» (одна подписка на company+part)."""
+    if user.company_id is None:
+        raise HTTPException(status_code=400, detail="У пользователя нет компании")
+    sub = (
+        await db.execute(
+            select(ListingSubscription).where(
+                ListingSubscription.company_id == user.company_id,
+                ListingSubscription.inventree_part_id == payload.inventree_part_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if sub is None:
+        sub = ListingSubscription(
+            company_id=user.company_id,
+            inventree_part_id=payload.inventree_part_id,
+            notified=False,
+        )
+        db.add(sub)
+        await db.commit()
+        await db.refresh(sub)
+    return sub
+
+
+@router.delete("/subscriptions", response_model=dict)
+async def delete_subscription(
+    part_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> dict:
+    """Отписаться от части part_id."""
+    if user.company_id is None:
+        raise HTTPException(status_code=400, detail="У пользователя нет компании")
+    sub = (
+        await db.execute(
+            select(ListingSubscription).where(
+                ListingSubscription.company_id == user.company_id,
+                ListingSubscription.inventree_part_id == part_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if sub is not None:
+        await db.delete(sub)
+        await db.commit()
+    return {"ok": True}
+
+
+@router.get("/notifications", response_model=list[NotificationOut])
+async def list_notifications(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> list[NotificationOut]:
+    """Уведомления компании: подписки с notified=True (новые листинги по части)."""
+    if user.company_id is None:
+        raise HTTPException(status_code=400, detail="У пользователя нет компании")
+    subs = (
+        await db.execute(
+            select(ListingSubscription)
+            .where(
+                ListingSubscription.company_id == user.company_id,
+                ListingSubscription.notified == True,  # noqa: E712
+            )
+            .order_by(ListingSubscription.notified_at.desc())
+        )
+    ).scalars().all()
+    out: list[NotificationOut] = []
+    for s in subs:
+        name, _cat = await _part_info(s.inventree_part_id)
+        out.append(
+            NotificationOut(
+                id=s.id,
+                inventree_part_id=s.inventree_part_id,
+                part_name=name,
+                notified_at=s.notified_at,
+            )
+        )
+    return out
 
 
 # ============================== ЮKASSA (Безопасная сделка) ==============================

@@ -214,6 +214,38 @@ class ReviewOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# --- Subscription (UX-2: «Сообщить, когда появится») ---
+
+
+class SubscriptionStatusOut(BaseModel):
+    subscribed: bool
+    part_id: int
+
+
+class SubscriptionIn(BaseModel):
+    inventree_part_id: int
+
+
+class SubscriptionOut(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    inventree_part_id: int
+    notified: bool
+    notified_at: datetime | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class NotificationOut(BaseModel):
+    """Уведомление = подписка с notified=True (одна на (company, part))."""
+
+    id: uuid.UUID
+    inventree_part_id: int
+    part_name: str | None = None
+    notified_at: datetime
+
+
 # --- Каталог (из InvenTree + наши цены) ---
 
 

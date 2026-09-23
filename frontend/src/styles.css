@@ -93,7 +93,9 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 .pd-detail-props dd { margin: 2px 0 0; font-size: 14px; color: #222; }
 .pd-badge.in { background: #dcfce7; color: #15803d; }
 .pd-badge.out { background: #fef3c7; color: #b45309; }
+.pd-badge.sold { background: #fee2e2; color: #b91c1c; }
 .pd-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.pd-subscribe-block { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .pd-detail-offers { display: flex; flex-direction: column; gap: 8px; }
 .pd-offer { display: flex; gap: 10px; align-items: center; }
 .pd-offer-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }

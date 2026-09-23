@@ -31,6 +31,8 @@ export default function PartDetail() {
   const [companyVerified, setCompanyVerified] = useState(false)
   const [buying, setBuying] = useState(false)
   const [oneClickMsg, setOneClickMsg] = useState(null)
+  const [subStatus, setSubStatus] = useState(null)
+  const [subMsg, setSubMsg] = useState(null)
 
   useEffect(() => {
     const session = readSession()
@@ -48,6 +50,50 @@ export default function PartDetail() {
         .catch(() => {})
     }
   }, [])
+
+  // UX-2: статус подписки «Сообщить, когда появится» (после загрузки карточки)
+  useEffect(() => {
+    const session = readSession()
+    if (!session?.token || !data?.id) return
+    authFetch(`/api/subscriptions?part_id=${data.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((resp) => {
+        if (resp) setSubStatus(Boolean(resp.subscribed))
+      })
+      .catch(() => {})
+  }, [data?.id])
+
+  const subscribe = async () => {
+    setSubMsg(null)
+    try {
+      const r = await authFetch('/api/subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inventree_part_id: data.id }),
+      })
+      if (r.ok) {
+        setSubStatus(true)
+        setSubMsg({ type: 'ok', text: 'Мы уведомим вас, когда появится новый листинг' })
+      } else {
+        const suffix = r.status === 401 || r.status === 400 ? ' — нужен вход' : ''
+        const resp = await r.json().catch(() => null)
+        setSubMsg({ type: 'err', text: (resp?.detail || 'Не удалось подписаться') + suffix })
+      }
+    } catch {
+      setSubMsg({ type: 'err', text: 'Ошибка соединения с сервером' })
+    }
+  }
+
+  const unsubscribe = async () => {
+    setSubMsg(null)
+    try {
+      const r = await authFetch(`/api/subscriptions?part_id=${data.id}`, { method: 'DELETE' })
+      if (r.ok) setSubStatus(false)
+      else setSubMsg({ type: 'err', text: 'Не удалось отписаться' })
+    } catch {
+      setSubMsg({ type: 'err', text: 'Ошибка соединения с сервером' })
+    }
+  }
 
   const oneClickBuy = async () => {
     if (!best || buying) return
@@ -101,7 +147,10 @@ export default function PartDetail() {
 
   if (!data) return <p className="pd-hint">Загрузка карточки…</p>
 
-  const best = data.listings && data.listings[0]
+  const activeListings = (data.listings || []).filter((l) => l.status === 'active')
+  const soldAny = (data.listings || []).some((l) => l.status === 'sold')
+  const best = activeListings[0]
+  const noActiveOffers = activeListings.length === 0 && (soldAny || (data.listings || []).length > 0)
   const session = readSession()
   const oneClickReady = Boolean(session?.company_id && buyerProfile && companyVerified)
 
@@ -126,16 +175,36 @@ export default function PartDetail() {
           {data.min_price != null ? (
             <div className="pd-price-big">{fmt(data.min_price)} ₽</div>
           ) : (
-            <div className="pd-price-big">Цена по запросу</div>
+            <div className="pd-price-big">{noActiveOffers ? 'Продано' : 'Цена по запросу'}</div>
           )}
-          <div className="pd-price-from">от — лучшая цена среди {data.listings?.length || 0} предложений</div>
+          {noActiveOffers && <span className="pd-badge sold">Продано</span>}
+          <div className="pd-price-from">от — лучшая цена среди {activeListings.length || 0} предложений</div>
           {best && best.seller_name && (
             <div className="pd-seller">
               Продавец: <strong>{best.seller_name}</strong>
               <Rating value={best.seller_rating} verified={best.seller_verified} />
             </div>
           )}
-          <Link to="/deal" className="pd-cta">Купить со сделкой</Link>
+          {noActiveOffers ? (
+            <div className="pd-subscribe-block">
+              {subStatus ? (
+                <button type="button" className="pd-btn pd-btn-cart" onClick={unsubscribe}>
+                  ✓ Вы подписаны — уведомим о новом листинге
+                </button>
+              ) : (
+                <button type="button" className="pd-btn pd-btn-primary pd-btn-cart" onClick={subscribe}>
+                  🔔 Сообщить, когда появится
+                </button>
+              )}
+              {subMsg && (
+                <p className={subMsg.type === 'ok' ? 'pd-form-ok' : 'pd-form-err'} role="status">
+                  {subMsg.text}
+                </p>
+              )}
+            </div>
+          ) : (
+            <Link to="/deal" className="pd-cta">Купить со сделкой</Link>
+          )}
           {oneClickReady ? (
             <button
               type="button"
@@ -209,14 +278,17 @@ export default function PartDetail() {
             {data.listings.map((l) => (
               <li key={l.id} className="pd-offer">
                 <div className="pd-offer-main">
-                  <strong>{l.title}</strong>
+                  <strong>{l.title}</strong>{' '}
+                  {l.status === 'sold' && <span className="pd-badge sold">Продано</span>}
                   <span className="pd-offer-price">{fmt(l.price_rub)} ₽</span>
                   <span className="pd-offer-meta">
                     {CONDITION_LABEL[l.condition] || l.condition} · {l.seller_name || 'Продавец'} 
                     {l.seller_rating != null ? ` · ${l.seller_rating.toFixed(1)} ★` : ''}
                   </span>
                 </div>
-                <Link to="/deal" className="pd-cta sm">Сделка</Link>
+                {l.status === 'active' ? (
+                  <Link to="/deal" className="pd-cta sm">Сделка</Link>
+                ) : null}
               </li>
             ))}
           </ul>

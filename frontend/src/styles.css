@@ -766,3 +766,7 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   .pd-f8-roles { grid-template-columns: 1fr; }
   .pd-f8-auth-user { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* UX-1: покупка в 1 клик */
+.pd-oneclick-hint { font-size: 0.85rem; color: #64748b; margin: 8px 0 0; }
+.pd-oneclick-hint a { color: #2563eb; }

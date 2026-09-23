@@ -32,6 +32,7 @@ from app.models import (
     User,
     UserRole,
     Base,
+    BuyerProfile,
     Company,
     Deal,
     DealStatus,
@@ -53,6 +54,10 @@ from app.schemas import (
     DealTransitionOut,
     DealPayIn,
     DealPayOut,
+    BuyerProfileIn,
+    BuyerProfileOut,
+    OneClickDealIn,
+    OneClickDealOut,
     DeviceSchemaIn,
     DeviceSchemaOut,
     DonorComponent,
@@ -614,6 +619,137 @@ async def transition_deal(
         to_status=payload.to,
         ok=True,
         deal=record,
+    )
+
+
+# ============================== ПОКУПКА В 1 КЛИК (UX-1) ==============================
+
+
+@router.get("/buyer-profile", response_model=BuyerProfileOut)
+async def get_buyer_profile(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> BuyerProfile:
+    """Профиль покупателя (реквизиты плательщика + адрес по умолчанию)."""
+    if user.company_id is None:
+        raise HTTPException(status_code=404, detail="Профиль покупателя не заполнен")
+    profile = (
+        await db.execute(select(BuyerProfile).where(BuyerProfile.company_id == user.company_id))
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Профиль покупателя не заполнен")
+    return profile
+
+
+@router.put("/buyer-profile", response_model=BuyerProfileOut)
+async def upsert_buyer_profile(
+    payload: BuyerProfileIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> BuyerProfile:
+    """Сохранить/обновить реквизиты плательщика и адрес доставки по умолчанию."""
+    if user.company_id is None:
+        raise HTTPException(status_code=400, detail="У пользователя нет компании")
+    company = await db.get(Company, user.company_id)
+    if company is None:
+        raise HTTPException(status_code=400, detail="У пользователя нет компании")
+    profile = (
+        await db.execute(select(BuyerProfile).where(BuyerProfile.company_id == company.id))
+    ).scalar_one_or_none()
+    if profile is None:
+        profile = BuyerProfile(company_id=company.id)
+    profile.billing_payer_name = payload.billing_payer_name
+    profile.billing_inn = payload.billing_inn
+    profile.default_address = payload.default_address
+    db.add(profile)
+    await db.commit()
+    await db.refresh(profile)
+    return profile
+
+
+@router.post("/deals/one-click", response_model=OneClickDealOut, status_code=201)
+async def one_click_deal(
+    payload: OneClickDealIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> OneClickDealOut:
+    """Создать сделку (эскроу) одним действием, используя сохранённые
+    реквизиты плательщика и адрес доставки по умолчанию. Только для
+    верифицированных компаний-покупателей."""
+    if user.company_id is None:
+        raise HTTPException(status_code=400, detail="У пользователя нет компании")
+    company = await db.get(Company, user.company_id)
+    if company is None:
+        raise HTTPException(status_code=400, detail="У пользователя нет компании")
+    if not company.verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Аккаунт не верифицирован — покупка в 1 клик недоступна",
+        )
+
+    listing = await db.get(Listing, payload.listing_id)
+    if listing is None:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.status == ListingStatus.sold:
+        raise HTTPException(status_code=400, detail="Товар уже продан")
+
+    profile = (
+        await db.execute(select(BuyerProfile).where(BuyerProfile.company_id == company.id))
+    ).scalar_one_or_none()
+    if (
+        profile is None
+        or not profile.billing_payer_name
+        or not profile.billing_inn
+        or not profile.default_address
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Заполните реквизиты плательщика (наименование, ИНН) и адрес доставки для покупки в 1 клик",
+        )
+
+    seller_company_id = listing.seller_id
+    amount = listing.price_rub
+    deal = Deal(
+        listing_id=listing.id,
+        buyer_company_id=company.id,
+        seller_company_id=seller_company_id,
+        status=DealStatus.created,
+        amount_rub=amount,
+        yookassa_payment_id=None,
+        escrow_status="created",
+        shipping_address=profile.default_address,
+        transitions=[],
+    )
+    db.add(deal)
+    await db.flush()  # нужен deal.id для платежа
+
+    payment_id = new_payment_id()
+    payment = yookassa.create_safe_deal_payment(
+        amount_rub=amount,
+        deal_id=str(deal.id),
+        payment_id=payment_id,
+        return_url="https://partsdonor.local/pay/success",
+    )
+    deal.yookassa_payment_id = payment.get("id") or payment_id
+    listing.status = ListingStatus.negotiated
+    await db.commit()
+    await db.refresh(deal)
+
+    pay_out = DealPayOut(
+        payment_id=deal.yookassa_payment_id or payment_id,
+        deal_id=deal.id,
+        status=payment.get("status", "pending"),
+        confirmation_url=payment.get("confirmation", {}).get("confirmation_url") if isinstance(
+            payment.get("confirmation"), dict
+        ) else None,
+        test=bool(payment.get("test", yookassa.test_mode)),
+    )
+    return OneClickDealOut(
+        deal=deal,
+        payment=pay_out,
+        billing_payer_name=profile.billing_payer_name,
+        billing_inn=profile.billing_inn,
+        delivery_address=profile.default_address,
     )
 
 

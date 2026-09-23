@@ -219,6 +219,30 @@ class Deal(Base):
     seller: Mapped[Company | None] = relationship(foreign_keys=[seller_company_id])
 
 
+class BuyerProfile(Base):
+    """Профиль покупателя: реквизиты плательщика + адрес доставки по умолчанию.
+
+    Нужен для «Купить в 1 клик» у верифицированных B2B-покупателей (UX-1).
+    Один профиль на компанию-покупателя.
+    """
+
+    __tablename__ = "buyer_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id"), unique=True, index=True
+    )
+    billing_payer_name: Mapped[str] = mapped_column(String(200), default="")
+    billing_inn: Mapped[str] = mapped_column(String(64), default="")
+    default_address: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    company: Mapped[Company | None] = relationship()
+
+
 class Review(Base):
     """Отзыв/рейтинг продавца (доверие для б/у рынка)."""
 

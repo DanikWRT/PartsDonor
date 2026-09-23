@@ -105,6 +105,14 @@ export default function BuyerCabinet() {
   const [submitting, setSubmitting] = useState(false)
   const [advancing, setAdvancing] = useState(null) // id сделки в обработке
 
+  // --- Покупка в 1 клик (реквизиты) ---
+  const [billingPayerName, setBillingPayerName] = useState('')
+  const [billingInn, setBillingInn] = useState('')
+  const [defaultAddress, setDefaultAddress] = useState('')
+  const [profileLoaded, setProfileLoaded] = useState(false)
+  const [saveMsg, setSaveMsg] = useState(null)
+  const [savingProfile, setSavingProfile] = useState(false)
+
   const load = () => {
     Promise.all([
       fetch('/api/deals').then((r) => (r.ok ? r.json() : [])),
@@ -118,6 +126,17 @@ export default function BuyerCabinet() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
+    authFetch('/api/buyer-profile')
+      .then(async (r) => {
+        if (r.ok) {
+          const p = await r.json()
+          setBillingPayerName(p.billing_payer_name || '')
+          setBillingInn(p.billing_inn || '')
+          setDefaultAddress(p.default_address || '')
+        }
+      })
+      .catch(() => {})
+      .finally(() => setProfileLoaded(true))
   }
 
   useEffect(() => { load() }, [])
@@ -236,6 +255,34 @@ export default function BuyerCabinet() {
     }
   }
 
+  // ---------- Сохранение реквизитов для покупки в 1 клик ----------
+  const saveProfile = async (e) => {
+    e.preventDefault()
+    setSavingProfile(true)
+    setSaveMsg(null)
+    try {
+      const r = await authFetch('/api/buyer-profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          billing_payer_name: billingPayerName,
+          billing_inn: billingInn,
+          default_address: defaultAddress,
+        }),
+      })
+      const data = await r.json().catch(() => null)
+      if (r.ok) {
+        setSaveMsg({ type: 'ok', text: 'Реквизиты сохранены — теперь доступна покупка в 1 клик' })
+      } else {
+        setSaveMsg({ type: 'err', text: data?.detail || 'Не удалось сохранить реквизиты' })
+      }
+    } catch {
+      setSaveMsg({ type: 'err', text: 'Ошибка соединения с сервером' })
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+
   if (loading) return <p className="pd-hint">Загрузка кабинета покупателя…</p>
 
   return (
@@ -322,7 +369,59 @@ export default function BuyerCabinet() {
         )}
       </section>
 
-      {/* 3. Мои заказы / отслеживание */}
+      {/* 3. Покупка в 1 клик (реквизиты) */}
+      <section aria-label="Покупка в 1 клик">
+        <h3>Покупка в 1 клик (реквизиты)</h3>
+        {buyer?.verified ? (
+          <p className="pd-form-ok">✓ Компания верифицирована</p>
+        ) : (
+          <p className="pd-muted">Не верифицирована — покупка в 1 клик недоступна до верификации</p>
+        )}
+        {profileLoaded && (
+          <form className="pd-form" onSubmit={saveProfile}>
+            <label className="pd-field">
+              <span className="pd-label">Наименование плательщика</span>
+              <input
+                className="pd-input"
+                type="text"
+                value={billingPayerName}
+                onChange={(e) => setBillingPayerName(e.target.value)}
+                placeholder="ООО Ромашка"
+              />
+            </label>
+            <label className="pd-field">
+              <span className="pd-label">ИНН</span>
+              <input
+                className="pd-input"
+                type="text"
+                value={billingInn}
+                onChange={(e) => setBillingInn(e.target.value)}
+                placeholder="7701234567"
+              />
+            </label>
+            <label className="pd-field">
+              <span className="pd-label">Адрес доставки по умолчанию</span>
+              <input
+                className="pd-input"
+                type="text"
+                value={defaultAddress}
+                onChange={(e) => setDefaultAddress(e.target.value)}
+                placeholder="Москва, Ленина 10"
+              />
+            </label>
+            <button type="submit" className="pd-btn pd-btn-primary" disabled={savingProfile}>
+              {savingProfile ? 'Сохранение…' : 'Сохранить реквизиты'}
+            </button>
+          </form>
+        )}
+        {saveMsg && (
+          <p className={saveMsg.type === 'ok' ? 'pd-form-ok' : 'pd-form-err'} role="status">
+            {saveMsg.text}
+          </p>
+        )}
+      </section>
+
+      {/* 4. Мои заказы / отслеживание */}
       <section aria-label="Мои заказы">
         <h3>Мои заказы</h3>
         {myOrders.length === 0 ? (

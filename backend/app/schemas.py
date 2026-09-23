@@ -157,6 +157,35 @@ class DealPayOut(BaseModel):
     test: bool               # тестовый режим
 
 
+class BuyerProfileIn(BaseModel):
+    billing_payer_name: str = ""
+    billing_inn: str = ""
+    default_address: str = ""
+
+
+class BuyerProfileOut(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    billing_payer_name: str
+    billing_inn: str
+    default_address: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OneClickDealIn(BaseModel):
+    listing_id: uuid.UUID
+
+
+class OneClickDealOut(BaseModel):
+    deal: DealOut
+    payment: DealPayOut | None = None
+    billing_payer_name: str
+    billing_inn: str
+    delivery_address: str
+
+
 class WebhookAck(BaseModel):
     """Ответ на вебхук ЮKassa: HTTP 200 = принято (иначе ЮKassa шлёт повторно 24ч)."""
     received: bool

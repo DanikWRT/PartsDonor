@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useCart } from '../cart.jsx'
+import { authFetch, readSession } from '../auth.jsx'
 
 const CONDITION_LABEL = {
   working: 'Рабочая',
@@ -26,6 +27,57 @@ export default function PartDetail() {
   const { add, has } = useCart()
   const [data, setData] = useState(null)
   const [err, setErr] = useState(false)
+  const [buyerProfile, setBuyerProfile] = useState(null)
+  const [companyVerified, setCompanyVerified] = useState(false)
+  const [buying, setBuying] = useState(false)
+  const [oneClickMsg, setOneClickMsg] = useState(null)
+
+  useEffect(() => {
+    const session = readSession()
+    if (session?.token) {
+      authFetch('/api/buyer-profile')
+        .then((r) => (r.ok ? r.json() : null))
+        .then(setBuyerProfile)
+        .catch(() => {})
+      fetch('/api/companies')
+        .then((r) => (r.ok ? r.json() : []))
+        .then((cs) => {
+          const own = (cs || []).find((c) => c.id === session.company_id)
+          setCompanyVerified(Boolean(own?.verified))
+        })
+        .catch(() => {})
+    }
+  }, [])
+
+  const oneClickBuy = async () => {
+    if (!best || buying) return
+    setBuying(true)
+    setOneClickMsg(null)
+    try {
+      const r = await authFetch('/api/deals/one-click', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listing_id: best.id }),
+      })
+      const resp = await r.json().catch(() => null)
+      if (r.ok) {
+        setOneClickMsg({
+          type: 'ok',
+          text: `Сделка создана и оплата инициирована (эскроу). Плательщик: ${resp.billing_payer_name}, ИНН ${resp.billing_inn}, доставка: ${resp.delivery_address}.`,
+        })
+      } else {
+        const suffix = r.status === 401 || r.status === 403 ? ' — нужен вход / верификация' : ''
+        setOneClickMsg({
+          type: 'err',
+          text: (resp?.detail || 'Не удалось оформить') + suffix,
+        })
+      }
+    } catch {
+      setOneClickMsg({ type: 'err', text: 'Ошибка соединения с сервером' })
+    } finally {
+      setBuying(false)
+    }
+  }
 
   useEffect(() => {
     setData(null)
@@ -50,6 +102,8 @@ export default function PartDetail() {
   if (!data) return <p className="pd-hint">Загрузка карточки…</p>
 
   const best = data.listings && data.listings[0]
+  const session = readSession()
+  const oneClickReady = Boolean(session?.company_id && buyerProfile && companyVerified)
 
   return (
     <div className="pd-detail">
@@ -82,6 +136,35 @@ export default function PartDetail() {
             </div>
           )}
           <Link to="/deal" className="pd-cta">Купить со сделкой</Link>
+          {oneClickReady ? (
+            <button
+              type="button"
+              className="pd-btn pd-btn-success pd-btn-cart"
+              disabled={buying}
+              onClick={oneClickBuy}
+            >
+              {buying ? 'Оформление…' : '⚡ Купить в 1 клик'}
+            </button>
+          ) : session?.company_id ? (
+            <p className="pd-oneclick-hint">
+              Купить в 1 клик: заполните{' '}
+              <Link to="/buyer">реквизиты плательщика и адрес в кабинете покупателя</Link>
+            </p>
+          ) : null}
+          {oneClickMsg && (
+            <p
+              className={oneClickMsg.type === 'ok' ? 'pd-form-ok' : 'pd-form-err'}
+              role="status"
+            >
+              {oneClickMsg.text}
+              {oneClickMsg.type === 'ok' && (
+                <>
+                  {' '}
+                  <Link to="/deal">Мои сделки →</Link>
+                </>
+              )}
+            </p>
+          )}
           {best && best.price_rub != null && (
             <button
               type="button"

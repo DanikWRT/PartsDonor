@@ -27,6 +27,7 @@ export default function DonorLots() {
           {lots.map((lot) => (
             <Link key={lot.id} to={`/donor-lot/${lot.id}`} className="pd-donor-card">
               <div className="pd-donor-card-thumb">
+                <img src={lot.donor_image || '/photos/device-donor.jpg'} alt={`${lot.brand} ${lot.model}`} className="pd-donor-card-img" loading="lazy" />
                 <ExplodedScheme
                   components={lot.components || []}
                   selectedKey={null}

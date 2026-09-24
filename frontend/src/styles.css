@@ -66,6 +66,9 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 .pd-detail-head { display: flex; gap: 14px; align-items: center; }
 .pd-detail-head h2 { margin: 0 0 2px; }
 .pd-detail-icon { width: 72px; height: 72px; border-radius: 16px; }
+.pd-detail-icon:has(.pd-detail-icon-img)::before,
+.pd-detail-icon:has(.pd-detail-icon-img)::after { display: none; }
+.pd-detail-icon-img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
 .pd-detail-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
 .pd-detail-price-block {
   background: #fff; border: 1px solid #e6e7eb; border-radius: 14px; padding: 18px;
@@ -1164,3 +1167,88 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 
 .pd-blowup-empty { min-height: 120px; display: flex; align-items: center; justify-content: center; background: #f1f5f9; border-radius: 12px; border: 1px dashed #cbd5e1; box-sizing: border-box; }
 .pd-blowup-empty p { margin: 0; }
+
+/* --- Photo styles (UX fix #2) --- */
+.pd-layer-img, .pd-flat-img {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  object-fit: cover;
+  border: 1px solid rgba(255,255,255,.6);
+  z-index: 2;
+  pointer-events: none;
+}
+.pd-layer-img {
+  display: block;
+}
+.pd-flat-img {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: cover;
+  border: 1px solid rgba(255,255,255,.6);
+  z-index: 2;
+  pointer-events: none;
+}
+.pd-part-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid #e6e7eb;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.pd-pt-photo {
+  margin-bottom: 8px;
+}
+.pd-pt-photo img {
+  width: 100%;
+  max-width: 200px;
+  border-radius: 8px;
+  border: 1px solid #e6e7eb;
+}
+.pd-donor-photo {
+  margin-top: 12px;
+  text-align: center;
+}
+.pd-donor-photo-hero {
+  flex-basis: 100%;
+  margin: 0 0 4px;
+}
+.pd-donor-photo-hero img {
+  max-height: 260px;
+  width: 100%;
+  object-fit: contain;
+}
+.pd-donor-photo img {
+  max-width: 100%;
+  height: auto;
+  max-height: 200px;
+  border-radius: 12px;
+  border: 1px solid #e6e7eb;
+  object-fit: contain;
+}
+.pd-donor-card-img {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 12px 12px 0 0;
+  border: none;
+}
+.pd-donor-lot-head {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.pd-donor-lot-info {
+  flex: 1;
+  min-width: 250px;
+}

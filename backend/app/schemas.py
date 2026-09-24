@@ -228,6 +228,7 @@ class DonorLotOut(BaseModel):
 
 class DonorLotDetail(DonorLotOut):
     exploded_url: str
+    donor_image: str | None = None
     components: list[DonorComponent]
     requests: list["DonorRequestOut"] | None = None
 
@@ -354,6 +355,7 @@ class DonorComponent(BaseModel):
     price_rub: float = 0
     status: str = "active"
     hotspot: dict = {}
+    image: str | None = None
 
 
 class DonorSchema(BaseModel):

@@ -353,7 +353,7 @@ async def catalog_detail(
         is_assembly=bool(part.get("assembly")),
         in_stock=part_id in stock_parts,
         description=part.get("description") or part.get("name") or "",
-        image_url=None,
+        image_url=part.get("image") or None,
         listings=listing_outs,
         min_price=min_price,
         min_condition=min_condition,
@@ -390,13 +390,14 @@ async def get_donor(donor_part_id: int, db: AsyncSession = Depends(get_db)) -> D
                 price_rub=listing.price_rub if listing else 0,
                 status=listing.status.value if listing else "none",
                 hotspot={},
+                image=comp.get("image") or None,
             )
         )
 
     return DonorSchema(
         brand=donor.get("category_detail", {}).get("name", "") if donor.get("category_detail") else "",
         model=donor.get("name", str(donor_part_id)),
-        exploded_view_url="",
+        exploded_view_url=donor.get("image") or "",
         components=components,
     )
 
@@ -492,6 +493,14 @@ async def get_donor_lot(
     if lot.device_schema and lot.device_schema.inventree_donor_part_id:
         try:
             bom_subs = await inventree.get_bom_subs(lot.device_schema.inventree_donor_part_id)
+            # Загружаем изображения компонентов из InvenTree
+            for comp in bom_subs:
+                part_id = comp["part_id"]
+                try:
+                    part_data = await inventree.get_part(part_id)
+                    comp["image"] = part_data.get("image") or None
+                except Exception:
+                    comp["image"] = None
             listing_by_part = {
                 l.inventree_part_id: l
                 for l in (await db.execute(select(Listing))).scalars().all()
@@ -507,6 +516,7 @@ async def get_donor_lot(
                     price_rub=listing.price_rub if listing else 0,
                     status=listing.status.value if listing else "none",
                     hotspot={},
+                    image=comp.get("image"),
                 ))
         except Exception as exc:
             # Развёртка не должна ронять карточку, но ошибку логируем — иначе
@@ -540,6 +550,14 @@ async def get_donor_lot(
     listing = listing_res.scalar_one_or_none()
     if listing:
         listing_id = listing.id
+    # Изображение донора из InvenTree
+    donor_image = None
+    if lot.device_schema and lot.device_schema.inventree_donor_part_id:
+        try:
+            donor_part_data = await inventree.get_part(lot.device_schema.inventree_donor_part_id)
+            donor_image = donor_part_data.get("image") or None
+        except Exception:
+            pass
     return DonorLotDetail(
         id=lot.id,
         device_schema_id=lot.device_schema_id,
@@ -558,6 +576,7 @@ async def get_donor_lot(
         listing_id=listing_id,
         created_at=lot.created_at,
         exploded_url=lot.device_schema.exploded_view_url if lot.device_schema else "",
+        donor_image=donor_image,
         components=components,
         requests=requests_out,
     )

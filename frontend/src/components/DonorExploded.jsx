@@ -318,6 +318,22 @@ function isFlat(slotKey, rawName) {
 
 const VIEW_W = 300, VIEW_H = 460, PAD = 26, LYR_W = 210
 
+// UX-fix #2: реалистичные фото-плейсхолдеры как fallback, когда InvenTree не
+// вернул реальное изображение запчасти/донора. Публичные ассеты в frontend/public/photos/.
+const PHOTO_FALLBACK = {
+  display: '/photos/display.jpg',
+  board: '/photos/board.jpg',
+  battery: '/photos/battery.jpg',
+  camera: '/photos/camera.jpg',
+  backcover: '/photos/backcover.jpg',
+}
+
+export function componentPhoto(c) {
+  if (c?.image && String(c.image).trim()) return c.image
+  const key = normalizeSlot(c?.slot) || (Object.prototype.hasOwnProperty.call(SLOT_META, c?.slot) ? c.slot : null)
+  return key && PHOTO_FALLBACK[key] ? PHOTO_FALLBACK[key] : null
+}
+
 function ExplosionAxis({ cx, top, bottom }) {
   return (
     <g opacity="0.5">
@@ -337,9 +353,12 @@ function ExplosionAxis({ cx, top, bottom }) {
 }
 
 function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUrl }) {
-  const sorted = [...(components || [])].sort((a, b) => (a.hotspot?.y ?? 0.5) - (b.hotspot?.y ?? 0.5))
+  const sorted = [...(components || [])].sort((a, b) => {
+    const ay = (a.hotspot?.y != null) ? a.hotspot.y : 0;
+    const by = (b.hotspot?.y != null) ? b.hotspot.y : 0;
+    return ay - by;
+  })
   if (sorted.length === 0) {
-    // Нет слоёв — не рисуем разнесёнку, чтобы не уронить карточку/список.
     return (
       <div className="pd-blowup pd-blowup-empty" role="img" aria-label="Развёртка отсутствует">
         <p className="pd-muted">Развёртка недоступна</p>
@@ -347,13 +366,20 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
     )
   }
   const cx = VIEW_W / 2
-  const yOf = (c) => PAD + (c.hotspot?.y ?? 0.5) * (VIEW_H - 2 * PAD)
-  const top = yOf(sorted[0]) - 40
-  const bottom = yOf(sorted[sorted.length - 1]) + 40
+  // FIX Bug1: spread layers evenly along Y axis regardless of hotspot quality.
+  // If hotspots are present and distinct, honour them; but ALWAYS guarantee
+  // minimum vertical separation so layers never fully overlap.
+  const n = sorted.length
+  const spreadTop = PAD
+  const spreadBottom = VIEW_H - PAD
+  const yPositions = sorted.map((_, i) => spreadTop + (i / (n - 1 || 1)) * (spreadBottom - spreadTop))
+  const yOf = (c, i) => yPositions[i]
+  const top = yOf(sorted[0], 0) - 40
+  const bottom = yOf(sorted[n - 1], n - 1) + 40
   const dotCls = (c) => statusCls(c.status)
   const tilt = (i) => (i - (sorted.length - 1) / 2) * 7
   const pctX = (c, i) => (((c.hotspot?.x ?? 0.5) * VIEW_W + tilt(i)) / VIEW_W) * 100
-  const pctY = (c) => (yOf(c) / VIEW_H) * 100
+  const pctY = (c, i) => (yOf(c, i) / VIEW_H) * 100
 
   return (
     <div className="pd-blowup" role="img" aria-label="Разнесённый вид телефона">
@@ -370,7 +396,7 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
             key={`${c.slot}-${c.part_id ?? i}`}
             type="button"
             className={`${flat ? 'pd-flat-hotspot' : 'pd-layer-btn'} ${isSel ? 'selected' : ''}`}
-            style={{ left: `${pctX(c, i)}%`, top: `${pctY(c)}%`, width: `${layerW}%` }}
+            style={{ left: `${pctX(c, i)}%`, top: `${pctY(c, i)}%`, width: `${layerW}%` }}
             onClick={() => { onSelect(c); if (onSelectedKey) onSelectedKey(c) }}
             aria-pressed={isSel}
             title={c.title || SLOT_META[c.slot]?.label}
@@ -381,6 +407,12 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
               <svg viewBox={`${-LYR_W / 2 - 12} ${-30} ${LYR_W + 24} 60`} className="pd-layer-svg" preserveAspectRatio="none">
                 <SlotLayer slot={c.slot} w={LYR_W} skew={persp} />
               </svg>
+            )}
+            {componentPhoto(c) && !flat && (
+              <img src={componentPhoto(c)} alt={c.title} className="pd-layer-img" loading="lazy" />
+            )}
+            {componentPhoto(c) && flat && (
+              <img src={componentPhoto(c)} alt={c.title} className="pd-flat-img" loading="lazy" />
             )}
             <span className={`${flat ? 'pd-flat-tag' : 'pd-layer-tag'} ${dotCls(c)}`}>
               {SLOT_META[c.slot]?.label || c.title || c.slot}

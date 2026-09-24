@@ -7,6 +7,7 @@ import {
   normalizeSlot,
   SLOT_META,
   statusText,
+  componentPhoto,
 } from '../components/DonorExploded.jsx'
 
 const CONDITION_LABEL = {
@@ -216,7 +217,13 @@ export default function PartDetail() {
       <Link className="pd-back" to="/">← В каталог</Link>
 
       <div className="pd-detail-head">
-        <div className="pd-detail-icon" aria-hidden="true" />
+        <div className="pd-detail-icon" aria-hidden="true">
+          {data.image_url ? (
+            <img src={data.image_url} alt={data.name} className="pd-detail-icon-img" loading="lazy" />
+          ) : (
+            <img src="/photos/device-donor.jpg" alt={data.name} className="pd-detail-icon-img" loading="lazy" />
+          )}
+        </div>
         <div>
           <h2>{data.name}</h2>
           <p className="pd-card-cat">{data.category}</p>
@@ -357,6 +364,9 @@ export default function PartDetail() {
                         <strong>{c.title || SLOT_META[c.slot]?.label}</strong>
                         <span className="pd-part-price"> — {(c.price_rub || 0).toLocaleString('ru-RU')} ₽ · {statusText(c.status)}</span>
                       </span>
+                      {componentPhoto(c) && (
+                        <img src={componentPhoto(c)} alt={c.title} className="pd-part-thumb" loading="lazy" />
+                      )}
                     </button>
                   ))}
                 </div>
@@ -364,6 +374,11 @@ export default function PartDetail() {
               {selectedComp && (
                 <div className="pd-pt-panel" role="dialog" aria-label={`Деталь: ${selectedComp.title}`}>
                   <button type="button" className="pd-f7-close" onClick={() => setSelectedComp(null)} aria-label="Закрыть">✕</button>
+                  {componentPhoto(selectedComp) && (
+                    <div className="pd-pt-photo">
+                      <img src={componentPhoto(selectedComp)} alt={selectedComp.title} loading="lazy" />
+                    </div>
+                  )}
                   <h4 className="pd-pt-title">{selectedComp.title || SLOT_META[selectedComp.slot]?.label}</h4>
                   <dl className="pd-pt-props">
                     <div><dt>Цена</dt><dd>{(selectedComp.price_rub || 0).toLocaleString('ru-RU')} ₽</dd></div>

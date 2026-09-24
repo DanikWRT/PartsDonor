@@ -248,6 +248,7 @@ class InventreeClient:
                 "name": detail.get("name") or it.get("reference") or str(part_id),
                 "quantity": it.get("quantity", 1),
                 "category": cat_detail.get("name", "") if cat_detail else "",
+                "image": detail.get("image") or None,
             })
         return out
 

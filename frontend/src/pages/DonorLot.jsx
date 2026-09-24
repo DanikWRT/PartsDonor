@@ -119,6 +119,9 @@ export default function DonorLot() {
       <h2>{lot.brand} {lot.model}</h2>
 
       <div className="pd-donor-lot-head">
+        <div className="pd-donor-photo pd-donor-photo-hero">
+          <img src={lot.donor_image || '/photos/device-donor.jpg'} alt={`${lot.brand} ${lot.model}`} loading="lazy" />
+        </div>
         <div className="pd-donor-lot-info">
           <p className="pd-donor-lot-title">{lot.title}</p>
           <div className="pd-donor-lot-price">

@@ -128,6 +128,22 @@ def require_roles(*roles: UserRole):
     return _dep
 
 
+async def optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """Bearer token -> User, или None при отсутствии/невалидном токене.
+    Для публичных эндпоинтов, где аутентификация необязательна."""
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        return None
+    try:
+        payload = jwt.decode(credentials.credentials, settings.jwt_secret, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        return None
+    user = await db.get(User, uuid.UUID(str(payload.get("sub"))))
+    return user
+
+
 # --- роуты ---
 
 

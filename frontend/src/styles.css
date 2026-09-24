@@ -1127,3 +1127,40 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
     height: 120px;
   }
 }
+
+/* ===================== POLISH: part donor exploded view ===================== */
+.pd-polish-section {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.pd-polish-head h3 { margin: 0 0 4px; font-size: 17px; }
+.pd-polish-head p { margin: 0 0 12px; }
+.pd-pt-panel {
+  flex: 1 1 280px;
+  min-width: 240px;
+  max-width: 340px;
+  background: #fff;
+  border: 1px solid #d9e0ec;
+  border-radius: 14px;
+  padding: 18px 18px 16px;
+  position: relative;
+  box-shadow: 0 8px 24px rgba(15, 30, 60, 0.08);
+  box-sizing: border-box;
+}
+.pd-pt-title { margin: 0 44px 10px 0; font-size: 16px; line-height: 1.3; }
+.pd-pt-props { margin: 0 0 14px; display: grid; gap: 6px; }
+.pd-pt-props > div { display: flex; justify-content: space-between; gap: 10px; }
+.pd-pt-props dt { color: #777; font-size: 13px; }
+.pd-pt-props dd { margin: 0; font-weight: 600; font-size: 14px; text-align: right; }
+@media (max-width: 480px) {
+  .pd-polish-section { padding: 12px; }
+  .pd-f7-layout .pd-pt-panel { width: 100%; max-width: none; min-width: 0; }
+}
+
+.pd-blowup-empty { min-height: 120px; display: flex; align-items: center; justify-content: center; background: #f1f5f9; border-radius: 12px; border: 1px dashed #cbd5e1; box-sizing: border-box; }
+.pd-blowup-empty p { margin: 0; }

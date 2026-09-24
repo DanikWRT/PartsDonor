@@ -37,6 +37,7 @@ function HeaderNav() {
       <NavLink to="/" className="pd-logo">⚙️ PartsDonor</NavLink>
       <nav className="pd-nav">
         <NavLink to="/" end>Каталог</NavLink>
+        <NavLink to="/donor-lots">Доноры</NavLink>
         <NavLink to="/cabinet">Кабинет</NavLink>
         <NavLink to="/buyer">Покупателю</NavLink>
         <NavLink to="/deal">Сделка</NavLink>

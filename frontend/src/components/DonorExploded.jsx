@@ -337,7 +337,15 @@ function ExplosionAxis({ cx, top, bottom }) {
 }
 
 function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUrl }) {
-  const sorted = [...components].sort((a, b) => (a.hotspot?.y ?? 0.5) - (b.hotspot?.y ?? 0.5))
+  const sorted = [...(components || [])].sort((a, b) => (a.hotspot?.y ?? 0.5) - (b.hotspot?.y ?? 0.5))
+  if (sorted.length === 0) {
+    // Нет слоёв — не рисуем разнесёнку, чтобы не уронить карточку/список.
+    return (
+      <div className="pd-blowup pd-blowup-empty" role="img" aria-label="Развёртка отсутствует">
+        <p className="pd-muted">Развёртка недоступна</p>
+      </div>
+    )
+  }
   const cx = VIEW_W / 2
   const yOf = (c) => PAD + (c.hotspot?.y ?? 0.5) * (VIEW_H - 2 * PAD)
   const top = yOf(sorted[0]) - 40

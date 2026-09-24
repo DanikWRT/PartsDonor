@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useCart } from '../cart.jsx'
 import { authFetch, readSession } from '../auth.jsx'
+import {
+  ExplodedScheme,
+  normalizeSlot,
+  SLOT_META,
+  statusText,
+} from '../components/DonorExploded.jsx'
 
 const CONDITION_LABEL = {
   working: 'Рабочая',
@@ -34,6 +40,10 @@ export default function PartDetail() {
   const [subStatus, setSubStatus] = useState(null)
   const [subMsg, setSubMsg] = useState(null)
 
+  // POLISH TASK 1: донор-комплект — интерактивная развёртка с входящими запчастями (BOM)
+  const [donorCtx, setDonorCtx] = useState(null) // null | 'loading' | 'none' | { components, donorLot, error }
+  const [selectedComp, setSelectedComp] = useState(null)
+
   useEffect(() => {
     const session = readSession()
     if (session?.token) {
@@ -61,6 +71,53 @@ export default function PartDetail() {
         if (resp) setSubStatus(Boolean(resp.subscribed))
       })
       .catch(() => {})
+  }, [data?.id])
+
+  // POLISH TASK 1: если это донор-комплект — подтягиваем BOM (развёртку) и donor-lot
+  useEffect(() => {
+    if (!data?.id) return
+    setDonorCtx(null)
+    setSelectedComp(null)
+    let alive = true
+    ;(async () => {
+      try {
+        // Есть ли схема донора, у которой inventree_donor_part_id == этот part id?
+        let isDonor = Boolean(data.is_assembly)
+        let hotspots = null
+        try {
+          const schemas = await fetch('/api/device-schemas').then((r) => (r.ok ? r.json() : []))
+          const schema = (Array.isArray(schemas) ? schemas : []).find(
+            (s) => Number(s.inventree_donor_part_id) === Number(data.id),
+          )
+          if (schema) {
+            isDonor = true
+            hotspots = schema.hotspots || null
+          }
+        } catch { /* не критично */ }
+        if (!isDonor) {
+          if (alive) setDonorCtx('none')
+          return
+        }
+        const [donor, lots] = await Promise.all([
+          fetch(`/api/donor/${data.id}`).then((r) => (r.ok ? r.json() : null)),
+          fetch('/api/donor-lots').then((r) => (r.ok ? r.json() : [])),
+        ])
+        if (!alive) return
+        let components = (donor && Array.isArray(donor.components) ? donor.components : [])
+          .map((c) => {
+            const slotKey = normalizeSlot(c.slot) || normalizeSlot(c.title) || c.slot
+            return { ...c, slot: slotKey, hotspot: hotspots?.[slotKey] || c.hotspot || {} }
+          })
+        // donor-lot для «Смотреть как донор целиком →»
+        const lot = (Array.isArray(lots) ? lots : []).find(
+          (l) => Number(l.donor_part_id) === Number(data.id),
+        )
+        setDonorCtx({ components, donorLot: lot || null, error: components.length ? null : 'Нет входящих запчастей' })
+      } catch {
+        if (alive) setDonorCtx({ components: [], donorLot: null, error: 'Не удалось загрузить развёртку' })
+      }
+    })()
+    return () => { alive = false }
   }, [data?.id])
 
   const subscribe = async () => {
@@ -269,6 +326,68 @@ export default function PartDetail() {
           </dl>
         </div>
       </div>
+
+      {/* POLISH TASK 1: развёртка донора-комплекта с входящими запчастями (BOM) */}
+      {donorCtx && donorCtx !== 'none' && donorCtx !== 'loading' && (
+        <div className="pd-donor-part-exploded pd-polish-section">
+          <div className="pd-polish-head">
+            <h3>Развёртка аппарата / Комплектация донора</h3>
+            <p className="pd-muted">Клик по детали — подробнее о входящей запчасти.</p>
+          </div>
+          {donorCtx.error ? (
+            <p className="pd-muted">{donorCtx.error}</p>
+          ) : (
+            <div className={`pd-f7-layout ${selectedComp ? 'with-panel' : ''}`}>
+              <div className="pd-scheme">
+                <ExplodedScheme
+                  components={donorCtx.components}
+                  selectedKey={selectedComp?.slot}
+                  onSelect={(c) => setSelectedComp(c)}
+                  onSelectedKey={(c) => setSelectedComp(c)}
+                />
+                <div className="pd-parts">
+                  {donorCtx.components.map((c) => (
+                    <button
+                      key={`${c.slot}-${c.part_id ?? c.slot}`}
+                      type="button"
+                      className="pd-part"
+                      onClick={() => setSelectedComp(c)}
+                    >
+                      <span>
+                        <strong>{c.title || SLOT_META[c.slot]?.label}</strong>
+                        <span className="pd-part-price"> — {(c.price_rub || 0).toLocaleString('ru-RU')} ₽ · {statusText(c.status)}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {selectedComp && (
+                <div className="pd-pt-panel" role="dialog" aria-label={`Деталь: ${selectedComp.title}`}>
+                  <button type="button" className="pd-f7-close" onClick={() => setSelectedComp(null)} aria-label="Закрыть">✕</button>
+                  <h4 className="pd-pt-title">{selectedComp.title || SLOT_META[selectedComp.slot]?.label}</h4>
+                  <dl className="pd-pt-props">
+                    <div><dt>Цена</dt><dd>{(selectedComp.price_rub || 0).toLocaleString('ru-RU')} ₽</dd></div>
+                    <div><dt>Статус</dt><dd>{statusText(selectedComp.status)}</dd></div>
+                    {selectedComp.part_id != null && (
+                      <div><dt>Part ID</dt><dd>#{selectedComp.part_id}</dd></div>
+                    )}
+                  </dl>
+                  {donorCtx.donorLot && (
+                    <Link className="pd-btn pd-btn-sm" to={`/part/${selectedComp.part_id}`}>
+                      Открыть в каталоге →
+                    </Link>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {donorCtx.donorLot && (
+            <Link className="pd-back-link" to={`/donor-lot/${donorCtx.donorLot.id}`}>
+              Смотреть как донор целиком →
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* Все предложения */}
       {data.listings && data.listings.length > 0 ? (

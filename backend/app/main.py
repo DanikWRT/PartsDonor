@@ -28,7 +28,7 @@ from app.config import settings
 from app.db import engine, get_db
 from app.deal_machine import ESCROW_BY_DEAL, validate_transition
 from app.inventree_client import inventree
-from app.auth import admin_router, auth_router, get_current_user, require_roles
+from app.auth import admin_router, auth_router, get_current_user, optional_user, require_roles
 from app.models import (
     User,
     UserRole,
@@ -404,6 +404,20 @@ async def get_donor(donor_part_id: int, db: AsyncSession = Depends(get_db)) -> D
 # ============================== DONOR LOTS (S1) ==============================
 
 
+async def _load_donor_lot(db: AsyncSession, lot_id: uuid.UUID) -> DonorLot | None:
+    """Донор-лот с предзагруженными связями (device_schema, seller).
+
+    Ленивое обращение к связи в async-сессии падает MissingGreenlet -> HTTP 500,
+    поэтому связи всегда грузим заранее через selectinload.
+    """
+    stmt = (
+        select(DonorLot)
+        .options(selectinload(DonorLot.device_schema), selectinload(DonorLot.seller))
+        .where(DonorLot.id == lot_id)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 @router.get("/donor-lots", response_model=list[DonorLotOut])
 async def list_donor_lots(
     status: ListingStatus | None = Query(default=None),
@@ -468,10 +482,10 @@ async def list_donor_lots(
 async def get_donor_lot(
     id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles(UserRole.seller, UserRole.admin, UserRole.buyer)),
+    user: User | None = Depends(optional_user),
 ) -> DonorLotDetail:
     """Карточка донор-комплекта с развёрткой."""
-    lot = await db.get(DonorLot, id)
+    lot = await _load_donor_lot(db, id)
     if lot is None:
         raise HTTPException(status_code=404, detail="Donor lot not found")
     components: list[DonorComponent] = []
@@ -480,7 +494,7 @@ async def get_donor_lot(
             bom_subs = await inventree.get_bom_subs(lot.device_schema.inventree_donor_part_id)
             listing_by_part = {
                 l.inventree_part_id: l
-                for l in (await db.execute(select(Listing)).scalars().all())
+                for l in (await db.execute(select(Listing))).scalars().all()
                 if l.inventree_part_id is not None
             }
             for comp in bom_subs:
@@ -494,15 +508,17 @@ async def get_donor_lot(
                     status=listing.status.value if listing else "none",
                     hotspot={},
                 ))
-        except Exception:
-            pass
+        except Exception as exc:
+            # Развёртка не должна ронять карточку, но ошибку логируем — иначе
+            # она уходит в молчаливый pass и компоненты остаются пустыми.
+            log.warning("donor lot %s: не удалось собрать развёртку: %r", id, exc, exc_info=True)
     if lot.device_schema and lot.device_schema.hotspots:
         for c in components:
             hs = lot.device_schema.hotspots.get(c.slot)
             if hs:
                 c.hotspot = hs
     requests_out = None
-    if user.role in (UserRole.seller, UserRole.admin) and user.company_id == lot.seller_id:
+    if user and user.role in (UserRole.seller, UserRole.admin) and user.company_id == lot.seller_id:
         reqs = await db.execute(select(DonorRequest).where(DonorRequest.donor_lot_id == id))
         reqs_list = reqs.scalars().all()
         requests_out = []
@@ -580,7 +596,7 @@ async def create_donor_request(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
 ) -> DonorRequestOut:
-    lot = await db.get(DonorLot, id)
+    lot = await _load_donor_lot(db, id)
     if lot is None:
         raise HTTPException(status_code=404, detail="Donor lot not found")
     if lot.status == ListingStatus.sold:
@@ -621,7 +637,7 @@ async def list_donor_requests(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
 ) -> list[DonorRequestOut]:
-    lot = await db.get(DonorLot, id)
+    lot = await _load_donor_lot(db, id)
     if lot is None:
         raise HTTPException(status_code=404, detail="Donor lot not found")
     if user.company_id != lot.seller_id and user.role != UserRole.admin:
@@ -657,7 +673,7 @@ async def donor_lot_deal(
         raise HTTPException(status_code=400, detail="У пользователя нет компании")
     if not company.verified:
         raise HTTPException(status_code=403, detail="Аккаунт не верифицирован — покупка целиком недоступна")
-    lot = await db.get(DonorLot, id)
+    lot = await _load_donor_lot(db, id)
     if lot is None:
         raise HTTPException(status_code=404, detail="Donor lot not found")
     if lot.status == ListingStatus.sold:
@@ -670,7 +686,9 @@ async def donor_lot_deal(
     whole_listing = listing_res.scalar_one_or_none()
     if whole_listing is None:
         whole_listing = Listing(
-            inventree_part_id=lot.device_schema.inventree_donor_part_id,
+            inventree_part_id=(
+                lot.device_schema.inventree_donor_part_id if lot.device_schema else None
+            ),
             donor_lot_id=lot.id,
             seller_id=lot.seller_id,
             device_schema_id=lot.device_schema_id,

@@ -229,18 +229,7 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 /* Фон-подложка (exploded_view_url): скрыт по умолчанию, показывается только если картинка реально загрузилась (onLoad). */
 .pd-blowup-bg-test { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
 .pd-blowup-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 0; pointer-events: none; opacity: 0.9; }
-/* Тень-подложка под колонкой слоёв (ground shadow) — лёгкая, не перекрывает нижний слой */
-.pd-blowup::after {
-  content: '';
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  bottom: 0;
-  height: 7%;
-  background: radial-gradient(ellipse at center, rgba(60,70,90,.35) 0%, rgba(60,70,90,0) 72%);
-  pointer-events: none;
-  z-index: 0;
-}
+/* Тень-подложка под колонкой слоёв (ground shadow) — лёгкая, не перекрывает нижний слой. Рендерится блоком .pd-blowup-ground (в JSX), т.к. ::after занят под внутреннюю штриховую рамку. */
 .pd-blowup .pd-blowup-ground {
   position: absolute;
   left: 12%;
@@ -276,7 +265,7 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 .pd-dot.negotiated { background: #fbbf24; }
 .pd-dot.grey { background: #9a9aa2; }
 
-.pd-legend { display: flex; gap: 14px; justify-content: center; color: #3a4048; font-size: 11px; margin-top: 6px; position: relative; z-index: 2; }
+.pd-legend { display: flex; gap: 14px; justify-content: center; color: #8ea0bf; font-size: 11px; margin-top: 6px; position: relative; z-index: 2; }
 .pd-legend .dot { width: 10px; height: 10px; margin-right: 4px; vertical-align: middle; }
 .pd-legend .dot.in { background: #22c55e; }
 .pd-legend .dot.negotiated { background: #fbbf24; }
@@ -839,7 +828,6 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 .pd-flat-tag.sold { background: rgba(220,38,38,.92); color: #fff0f0; }
 .pd-flat-tag.negotiated { background: rgba(251,191,36,.92); color: #1a1500; }
 .pd-flat-tag.grey { background: rgba(90,95,104,.9); color: #eceef1; }
-.pd-flat-dot { ... }
 .pd-flat-dot {
   position: absolute;
   left: 50%;
@@ -1247,8 +1235,12 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   .pd-f7-layout .pd-pt-panel { width: 100%; max-width: none; min-width: 0; }
 }
 
-.pd-blowup-empty { min-height: 120px; display: flex; align-items: center; justify-content: center; background: #f1f5f9; border-radius: 12px; border: 1px dashed #cbd5e1; box-sizing: border-box; }
-.pd-blowup-empty p { margin: 0; }
+.pd-blowup-empty {
+  min-height: 120px; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(160deg, rgba(10,20,36,.9), rgba(7,16,32,.95));
+  border-radius: 12px; border: 1px solid rgba(120,160,220,.2); box-sizing: border-box;
+}
+.pd-blowup-empty p { margin: 0; color: #8ea0bf; }
 
 /* --- Photo styles (UX fix #2) --- */
 .pd-layer-img, .pd-flat-img {

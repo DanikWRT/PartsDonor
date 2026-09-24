@@ -174,14 +174,64 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 .pd-tab.active { background: #fff; color: #2563eb; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 
 .pd-scheme { position: relative; background: radial-gradient(120% 120% at 50% 28%, #eef2f7 0%, #d9e1ec 42%, #b6c4d5 100%); border-radius: 16px; padding: 14px; max-width: 340px; }
-.pd-blowup { position: relative; width: 100%; aspect-ratio: 300 / 460; margin-bottom: 8px; }
+/* === Blueprint restyle: .pd-blowup becomes a blueprint drawing sheet === */
+.pd-blowup {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 300 / 460;
+  margin-bottom: 8px;
+  background: linear-gradient(160deg, rgba(10,20,36,.9), rgba(7,16,32,.95));
+  border: 1px solid rgba(120,160,220,.2);
+  border-radius: 12px;
+  overflow: hidden;
+}
+/* Blueprint grid layer (behind content, using ::before) */
+.pd-blowup::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(120,160,220,.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120,160,220,.045) 1px, transparent 1px),
+    linear-gradient(rgba(120,160,220,.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120,160,220,.07) 1px, transparent 1px);
+  background-size: 20px 20px, 20px 20px, 100px 100px, 100px 100px;
+  mask-image: radial-gradient(ellipse at 50% 45%, black 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 45%, black 20%, transparent 75%);
+  pointer-events: none;
+  z-index: 0;
+}
+/* Inner inset dashed border */
+.pd-blowup::after {
+  content: '';
+  position: absolute; inset: 6px;
+  border: 1px solid rgba(120,160,220,.12);
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 1;
+}
+/* Corner marks */
+.pd-blowup .corner-mark {
+  position: absolute;
+  width: 14px; height: 14px;
+  pointer-events: none; z-index: 2;
+}
+.pd-blowup .corner-mark::before,
+.pd-blowup .corner-mark::after {
+  content: ''; position: absolute; background: rgba(120,160,220,.4);
+}
+.pd-blowup .corner-mark::before { width: 14px; height: 1px; top: 50%; left: 0; }
+.pd-blowup .corner-mark::after { width: 1px; height: 14px; top: 0; left: 50%; }
+.pd-blowup .corner-mark.tl { top: 4px; left: 4px; }
+.pd-blowup .corner-mark.tr { top: 4px; right: 4px; }
+.pd-blowup .corner-mark.bl { bottom: 4px; left: 4px; }
+.pd-blowup .corner-mark.br { bottom: 4px; right: 4px; }
 .pd-bg-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 /* Фон-подложка (exploded_view_url): скрыт по умолчанию, показывается только если картинка реально загрузилась (onLoad). */
 .pd-blowup-bg-test { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
 .pd-blowup-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 0; pointer-events: none; opacity: 0.9; }
 /* Тень-подложка под колонкой слоёв (ground shadow) — лёгкая, не перекрывает нижний слой */
 .pd-blowup::after {
-  content: "";
+  content: '';
   position: absolute;
   left: 12%;
   right: 12%;
@@ -191,6 +241,20 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   pointer-events: none;
   z-index: 0;
 }
+.pd-blowup .pd-blowup-ground {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: 0;
+  height: 7%;
+  background: radial-gradient(ellipse at center, rgba(60,70,90,.35) 0%, rgba(60,70,90,0) 72%);
+  pointer-events: none;
+  z-index: 0;
+}
+/* Pencil-sketch filter on all SVG contours */
+.pd-layer-svg, .pd-flat-svg { filter: url(#pencil); }
+
+/* Layer buttons: positioning + base */
 .pd-layer-btn { position: absolute; padding: 0; border: 0; background: none; cursor: pointer; transform: translate(-50%, -50%); z-index: 1; }
 .pd-layer-svg { display: block; width: 100%; aspect-ratio: 234 / 60; height: auto; transition: filter .15s ease; }
 .pd-layer-btn:hover .pd-layer-svg { filter: brightness(1.25) drop-shadow(0 4px 5px rgba(0,0,0,.45)); }
@@ -204,14 +268,20 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 }
 .pd-layer-tag.in { background: rgba(21,128,61,.92); color: #eafff1; }
 .pd-layer-tag.sold { background: rgba(220,38,38,.92); color: #fff0f0; }
+.pd-layer-tag.negotiated { background: rgba(251,191,36,.92); color: #1a1500; }
 .pd-layer-tag.grey { background: rgba(90,95,104,.9); color: #eceef1; }
 .pd-layer-btn .pd-dot { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 22px; height: 22px; border: 3px solid #fff; box-shadow: 0 0 0 3px rgba(0,0,0,.25); border-radius: 50%; z-index: 3; }
 .pd-dot.in { background: #22c55e; }
 .pd-dot.sold { background: #ef4444; }
+.pd-dot.negotiated { background: #fbbf24; }
 .pd-dot.grey { background: #9a9aa2; }
 
-.pd-legend { display: flex; gap: 14px; justify-content: center; color: #3a4048; font-size: 11px; margin-top: 6px; position: relative; }
+.pd-legend { display: flex; gap: 14px; justify-content: center; color: #3a4048; font-size: 11px; margin-top: 6px; position: relative; z-index: 2; }
 .pd-legend .dot { width: 10px; height: 10px; margin-right: 4px; vertical-align: middle; }
+.pd-legend .dot.in { background: #22c55e; }
+.pd-legend .dot.negotiated { background: #fbbf24; }
+.pd-legend .dot.sold { background: #ef4444; }
+.pd-legend .dot.grey { background: #9a9aa2; }
 
 .pd-part-price { color: #555; }
 .pd-part-mark { margin-left: auto; font-size: 11px; color: #2563eb; white-space: nowrap; }
@@ -635,6 +705,7 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 .pd-f7-badge.in { background: #dcf5e4; color: #177245; }
 .pd-f7-badge.sold { background: #fde2e2; color: #b3261e; }
 .pd-f7-badge.grey { background: #eceff4; color: #667; }
+.pd-f7-badge.negotiated { background: #fef3c7; color: #b45309; }
 .pd-f7-badge.cat { background: #e8eeff; color: #2b4bb0; }
 .pd-f7-props { margin: 0 0 14px; display: grid; gap: 6px; }
 .pd-f7-props > div { display: flex; justify-content: space-between; gap: 10px; }
@@ -667,9 +738,9 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 .pd-f7-notice.err { color: #b3261e; }
 
 /* Selected layer accent ring */
-.pd-layer-btn.selected .pd-layer-svg { filter: brightness(1.15) drop-shadow(0 0 6px rgba(80, 130, 255, 0.85)); }
+.pd-layer-btn.selected .pd-layer-svg { filter: brightness(1.15) drop-shadow(0 0 6px rgba(124,247,208,.85)); }
 .pd-layer-btn.selected .pd-layer-tag {
-  outline: 2px solid #4f7dff;
+  outline: 2px solid #7cf7d0;
   outline-offset: 2px;
   border-radius: 8px;
 }
@@ -677,9 +748,16 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   content: '';
   position: absolute;
   inset: -6px;
-  border: 2px solid #4f7dff;
+  border: 2px solid #7cf7d0;
   border-radius: 14px;
   pointer-events: none;
+}
+
+/* Dim-lines (#4fa3ff) */
+.dim-line { stroke: #4fa3ff; stroke-width: 0.6; fill: none; opacity: .7; }
+.dim-text {
+  font-family: 'Courier New', monospace;
+  font-size: 8px; fill: #4fa3ff; opacity: .9; letter-spacing: .5px;
 }
 
 /* Bottom sheet on mobile (<=480px) */
@@ -717,6 +795,7 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   height: auto;
   margin: 0 auto;
   pointer-events: none;
+  filter: url(#pencil);
 }
 .pd-flat-svg text {
   pointer-events: auto;
@@ -758,7 +837,9 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 }
 .pd-flat-tag.in { background: rgba(21,128,61,.92); color: #eafff1; }
 .pd-flat-tag.sold { background: rgba(220,38,38,.92); color: #fff0f0; }
+.pd-flat-tag.negotiated { background: rgba(251,191,36,.92); color: #1a1500; }
 .pd-flat-tag.grey { background: rgba(90,95,104,.9); color: #eceef1; }
+.pd-flat-dot { ... }
 .pd-flat-dot {
   position: absolute;
   left: 50%;
@@ -773,6 +854,7 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 }
 .pd-flat-dot.in { background: #22c55e; }
 .pd-flat-dot.sold { background: #ef4444; }
+.pd-flat-dot.negotiated { background: #fbbf24; }
 .pd-flat-dot.grey { background: #9a9aa2; }
 .pd-flat-hotspot.selected .pd-flat-dot {
   box-shadow: 0 0 0 3px rgba(79,125,255,.6);

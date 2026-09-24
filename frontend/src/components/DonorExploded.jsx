@@ -13,12 +13,13 @@ const SLOT_META = {
 
 function statusCls(status) {
   if (status === 'sold') return 'sold'
+  if (status === 'negotiated') return 'negotiated'
   if (status === 'active' || !status) return 'in'
   return 'grey'
 }
 function statusText(status) {
   if (status === 'sold') return 'Продано'
-  if (status === 'negotiated') return 'Забронировано'
+  if (status === 'negotiated') return 'Под заказ'
   if (status === 'hidden') return 'Скрыто'
   return 'В наличии'
 }
@@ -383,8 +384,40 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
 
   return (
     <div className="pd-blowup" role="img" aria-label="Разнесённый вид телефона">
+      {/* Blueprint stamp header */}
+      <div className="blueprint-stamp">
+        <div className="stamp-left">
+          <span className="stamp-title">МОДЕЛЬ · <b>РАЗБОРКА</b></span>
+          <span className="stamp-sub">РЕВ · ВЗРЫВ-СХЕМА ДОНОРА · 1:1</span>
+        </div>
+        <div className="stamp-code">
+          SN&nbsp;<b className="big">DNR</b>·<i>{sorted.length}</i>
+        </div>
+      </div>
+      {/* Corner marks */}
+      <span className="corner-mark tl" />
+      <span className="corner-mark tr" />
+      <span className="corner-mark bl" />
+      <span className="corner-mark br" />
+      {/* Blueprint background with grid (CSS ::before) and dim-lines */}
       <svg className="pd-bg-svg" viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <defs>
+          <filter id="pencil" x="-10%" y="-10%" width="120%" height="120%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" seed="3" result="noise"/>
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="0.6" xChannelSelector="R" yChannelSelector="G"/>
+          </filter>
+        </defs>
         <ExplosionAxis cx={cx} top={top} bottom={bottom} />
+        {/* Overall dimension line (vertical) */}
+        <line x1={cx} y1={top - 20} x2={cx} y2={bottom + 10} className="dim-line" />
+        <line x1={cx - 4} y1={top - 20} x2={cx + 4} y2={top - 20} className="dim-line" />
+        <line x1={cx - 4} y1={bottom + 10} x2={cx + 4} y2={bottom + 10} className="dim-line" />
+        <text className="dim-text" x={cx + 8} y={(top + bottom) / 2} textAnchor="start" transform={`rotate(-90 ${cx + 8} ${(top + bottom) / 2})`}>{(bottom - top)} мм</text>
+        {/* Horizontal width dimension */}
+        <line x1={VIEW_W * 0.15} y1={VIEW_H - 8} x2={VIEW_W * 0.85} y2={VIEW_H - 8} className="dim-line" />
+        <line x1={VIEW_W * 0.15} y1={VIEW_H - 12} x2={VIEW_W * 0.15} y2={VIEW_H - 4} className="dim-line" />
+        <line x1={VIEW_W * 0.85} y1={VIEW_H - 12} x2={VIEW_W * 0.85} y2={VIEW_H - 4} className="dim-line" />
+        <text className="dim-text" x={VIEW_W / 2} y={VIEW_H - 1} textAnchor="middle">{VIEW_W} мм</text>
       </svg>
       {sorted.map((c, i) => {
         const isSel = c.slot === selectedKey
@@ -423,8 +456,8 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
       })}
       <div className="pd-legend">
         <span><i className="dot in" /> в наличии</span>
+        <span><i className="dot negotiated" /> под заказ</span>
         <span><i className="dot sold" /> продано</span>
-        <span><i className="dot grey" /> фото/статус</span>
       </div>
     </div>
   )

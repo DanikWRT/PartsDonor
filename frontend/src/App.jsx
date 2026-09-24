@@ -1,6 +1,8 @@
 import React from 'react'
 import { Routes, Route, NavLink, useNavigate } from 'react-router-dom'
 import DonorView from './pages/DonorView.jsx'
+import DonorLots from './pages/DonorLots.jsx'
+import DonorLot from './pages/DonorLot.jsx'
 import Catalog from './pages/Catalog.jsx'
 import Cabinet from './pages/Cabinet.jsx'
 import Deal from './pages/Deal.jsx'
@@ -60,6 +62,8 @@ export default function App() {
       <main className="pd-main">
         <Routes>
           <Route path="/" element={<Catalog />} />
+          <Route path="/donor-lots" element={<DonorLots />} />
+          <Route path="/donor-lot/:id" element={<DonorLot />} />
           <Route path="/part/:id" element={<PartDetail />} />
           <Route path="/donor/:brand/:model" element={<DonorView />} />
           <Route path="/cabinet" element={<Cabinet />} />

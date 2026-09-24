@@ -887,3 +887,243 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 /* UX-1: покупка в 1 клик */
 .pd-oneclick-hint { font-size: 0.85rem; color: #64748b; margin: 8px 0 0; }
 .pd-oneclick-hint a { color: #2563eb; }
+
+
+/* ===================== F8: Donor lots (S-1) ===================== */
+.pd-catalog-toggle {
+  display: flex;
+  gap: 4px;
+  background: #f1f5f9;
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 18px;
+}
+.pd-toggle-btn {
+  flex: 1;
+  text-align: center;
+  padding: 10px 8px;
+  border-radius: 8px;
+  font-weight: 600;
+  color: #475569;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  min-height: 44px;
+}
+.pd-toggle-btn.active {
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+}
+
+/* Donor cards grid */
+.pd-donor-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+.pd-donor-card {
+  display: flex;
+  gap: 16px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px;
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+.pd-donor-card:hover {
+  border-color: #2563eb;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.1);
+}
+.pd-donor-card-thumb {
+  width: 120px;
+  height: 80px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+.pd-donor-card-thumb svg {
+  width: 100%;
+  height: 100%;
+}
+.pd-donor-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.pd-donor-card-body strong {
+  font-size: 15px;
+  color: #0f172a;
+}
+.pd-donor-card-title {
+  font-size: 13px;
+  color: #64748b;
+}
+.pd-donor-card-price {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.pd-donor-card-meta {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* Donor lot page */
+.pd-donor-lot-page { max-width: 960px; margin: 0 auto; }
+.pd-back-link {
+  display: inline-block;
+  font-size: 14px;
+  color: #2563eb;
+  text-decoration: none;
+  margin-bottom: 8px;
+}
+.pd-back-link:hover { text-decoration: underline; }
+.pd-donor-lot-head {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+.pd-donor-lot-info {
+  flex: 1;
+  min-width: 0;
+}
+.pd-donor-lot-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px;
+}
+.pd-donor-lot-price {
+  font-size: 28px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 12px;
+}
+.pd-donor-lot-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #475569;
+}
+.pd-donor-lot-seller {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #64748b;
+}
+.pd-donor-lot-exploded {
+  width: 280px;
+  flex-shrink: 0;
+}
+
+/* Donor lot actions */
+.pd-donor-lot-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 20px 0;
+}
+.pd-donor-lot-actions .pd-err {
+  color: #b91c1c;
+  font-size: 14px;
+}
+
+/* Request form */
+.pd-request-form {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 20px;
+  margin-top: 20px;
+}
+.pd-request-form h3 {
+  margin: 0 0 14px;
+  font-size: 16px;
+  color: #0f172a;
+}
+.pd-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.pd-input {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.pd-textarea {
+  min-height: 80px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  resize: vertical;
+}
+.pd-requests-section {
+  margin-top: 24px;
+}
+.pd-requests-list {
+  list-style: none;
+  padding: 0;
+  margin-top: 12px;
+}
+.pd-request-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.pd-status-badge {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.pd-status-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+.pd-status-accepted {
+  background: #d1fae5;
+  color: #065f46;
+}
+.pd-status-rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.pd-request-msg {
+  color: #64748b;
+  font-style: italic;
+}
+
+@media (max-width: 640px) {
+  .pd-donor-lot-head {
+    flex-direction: column;
+  }
+  .pd-donor-lot-exploded {
+    width: 100%;
+  }
+  .pd-donor-card-grid {
+    grid-template-columns: 1fr;
+  }
+  .pd-donor-card {
+    flex-direction: column;
+  }
+  .pd-donor-card-thumb {
+    width: 100%;
+    height: 120px;
+  }
+}

@@ -363,7 +363,7 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
             type="button"
             className={`${flat ? 'pd-flat-hotspot' : 'pd-layer-btn'} ${isSel ? 'selected' : ''}`}
             style={{ left: `${pctX(c, i)}%`, top: `${pctY(c)}%`, width: `${layerW}%` }}
-            onClick={() => onSelect(c)}
+            onClick={() => { onSelect(c); if (onSelectedKey) onSelectedKey(c) }}
             aria-pressed={isSel}
             title={c.title || SLOT_META[c.slot]?.label}
           >
@@ -406,6 +406,66 @@ function DonorExplodedMini({ components }) {
   )
 }
 
+// F7: панель детали (деталь) — right side panel (desktop) / bottom sheet (mobile).
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'В наличии' },
+  { value: 'negotiated', label: 'Забронировано' },
+  { value: 'sold', label: 'Продано' },
+]
+
+function DetailPanel({ comp, onClose, onSetStatus, saving, notice, hasToken }) {
+  if (!comp) return null
+  const fmt = (n) => (n || 0).toLocaleString('ru-RU')
+  return (
+    <>
+      <div className="pd-f7-backdrop" onClick={onClose} aria-hidden="true" />
+      <aside className="pd-f7-panel" role="dialog" aria-label={`Деталь: ${comp.title}`}>
+        <button type="button" className="pd-f7-close" onClick={onClose} aria-label="Закрыть">✕</button>
+        <h3 className="pd-f7-title">{comp.title}</h3>
+        <div className="pd-f7-badges">
+          <span className={`pd-f7-badge ${statusCls(comp.status)}`}>{statusText(comp.status)}</span>
+          {comp.listing?.part_category && <span className="pd-f7-badge cat">{comp.listing.part_category}</span>}
+        </div>
+        <dl className="pd-f7-props">
+          <div><dt>Цена</dt><dd>{fmt(comp.price_rub)} ₽</dd></div>
+          <div><dt>Состояние</dt><dd>{comp.listing?.condition ? conditionText(comp.listing.condition) : '—'}</dd></div>
+          <div><dt>Происхождение</dt><dd>{comp.listing?.provenance || '—'}</dd></div>
+        </dl>
+        <div className="pd-f7-status">
+          <h4>Статус детали</h4>
+          {comp.listing ? (
+            hasToken ? (
+            <div className="pd-f7-status-btns">
+              {STATUS_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  className={`pd-f7-status-btn ${comp.status === o.value ? 'active' : ''}`}
+                  disabled={saving || comp.status === o.value}
+                  onClick={() => onSetStatus(comp, o.value)}
+                >{o.label}</button>
+              ))}
+            </div>
+            ) : (
+              <p className="pd-f7-note pd-f7-noauth">Необходим вход (JWT отсутствует)</p>
+            )
+          ) : (
+            <p className="pd-f7-note">Нет листинга для этой детали.</p>
+          )}
+          {notice && <p className={`pd-f7-notice ${notice.kind}`}>{notice.text}</p>}
+        </div>
+      </aside>
+    </>
+  )
+}
+
+function conditionText(c) {
+  if (c === 'new') return 'Новое'
+  if (c === 'tested') return 'Проверено'
+  if (c === 'untested') return 'Не проверено'
+  return c
+}
+
 export {
   ExplodedScheme,
   DonorExplodedMini,
@@ -414,4 +474,10 @@ export {
   SLOT_META,
   statusCls,
   statusText,
+  STATUS_OPTIONS,
+  DetailPanel,
+  conditionText,
+  SlotLayer,
+  FlatDrawing,
+  ExplosionAxis,
 }

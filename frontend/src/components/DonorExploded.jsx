@@ -367,20 +367,15 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
     )
   }
   const cx = VIEW_W / 2
-  // FIX Bug1: spread layers evenly along Y axis regardless of hotspot quality.
-  // If hotspots are present and distinct, honour them; but ALWAYS guarantee
-  // minimum vertical separation so layers never fully overlap.
   const n = sorted.length
   const spreadTop = PAD
   const spreadBottom = VIEW_H - PAD
+  // Explode layers along Y axis: each node gets a distinct Y coordinate
   const yPositions = sorted.map((_, i) => spreadTop + (i / (n - 1 || 1)) * (spreadBottom - spreadTop))
   const yOf = (c, i) => yPositions[i]
   const top = yOf(sorted[0], 0) - 40
   const bottom = yOf(sorted[n - 1], n - 1) + 40
   const dotCls = (c) => statusCls(c.status)
-  const tilt = (i) => (i - (sorted.length - 1) / 2) * 7
-  const pctX = (c, i) => (((c.hotspot?.x ?? 0.5) * VIEW_W + tilt(i)) / VIEW_W) * 100
-  const pctY = (c, i) => (yOf(c, i) / VIEW_H) * 100
 
   return (
     <div className="pd-blowup" role="img" aria-label="Разнесённый вид телефона">
@@ -418,42 +413,61 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
         <line x1={VIEW_W * 0.15} y1={VIEW_H - 12} x2={VIEW_W * 0.15} y2={VIEW_H - 4} className="dim-line" />
         <line x1={VIEW_W * 0.85} y1={VIEW_H - 12} x2={VIEW_W * 0.85} y2={VIEW_H - 4} className="dim-line" />
         <text className="dim-text" x={VIEW_W / 2} y={VIEW_H - 1} textAnchor="middle">{VIEW_W} мм</text>
-      </svg>
+        {/* Exploded SVG layers — each main node drawn as a genuinely exploded .svg-part */}
       {sorted.map((c, i) => {
-        const isSel = c.slot === selectedKey
-        const layerW = (LYR_W / VIEW_W) * 100
-        const persp = (i - (sorted.length - 1) / 2) * 5
-        const flat = isFlat(c.slot, c.title)
-        return (
-          <button
-            key={`${c.slot}-${c.part_id ?? i}`}
-            type="button"
-            className={`${flat ? 'pd-flat-hotspot' : 'pd-layer-btn'} ${isSel ? 'selected' : ''}`}
-            style={{ left: `${pctX(c, i)}%`, top: `${pctY(c, i)}%`, width: `${layerW}%` }}
-            onClick={() => { onSelect(c); if (onSelectedKey) onSelectedKey(c) }}
-            aria-pressed={isSel}
-            title={c.title || SLOT_META[c.slot]?.label}
-          >
-            {flat ? (
-              <FlatDrawing slot={c.slot} title={c.title} />
-            ) : (
-              <svg viewBox={`${-LYR_W / 2 - 12} ${-30} ${LYR_W + 24} 60`} className="pd-layer-svg" preserveAspectRatio="none">
-                <SlotLayer slot={c.slot} w={LYR_W} skew={persp} />
-              </svg>
-            )}
-            {componentPhoto(c) && !flat && (
-              <img src={componentPhoto(c)} alt={c.title} className="pd-layer-img" loading="lazy" />
-            )}
-            {componentPhoto(c) && flat && (
-              <img src={componentPhoto(c)} alt={c.title} className="pd-flat-img" loading="lazy" />
-            )}
-            <span className={`${flat ? 'pd-flat-tag' : 'pd-layer-tag'} ${dotCls(c)}`}>
-              {SLOT_META[c.slot]?.label || c.title || c.slot}
-            </span>
-            <span className={`${flat ? 'pd-flat-dot' : 'pd-dot'} ${dotCls(c)}`} />
-          </button>
-        )
-      })}
+          const isSel = c.slot === selectedKey
+          const flat = isFlat(c.slot, c.title)
+          const unavailable = statusCls(c.status) === 'sold' || statusCls(c.status) === 'grey'
+          const yPx = yOf(c, i)
+          /* Label sits above the layer art with a visible gap */
+          const labelY = yPx - 48
+          const partX = cx - LYR_W / 2
+          const activeCls = isSel ? ' active' : ''
+          const unavCls = unavailable ? ' unavailable' : ''
+
+          return (
+            <g
+              key={`${c.slot}-${c.part_id ?? i}`}
+              className={`svg-part${unavCls}${activeCls}`}
+              data-part={c.slot}
+              onClick={() => { onSelect(c); if (onSelectedKey) onSelectedKey(c) }}
+              role="button"
+              tabIndex={0}
+            >
+              {/* Part hover highlight rect */}
+              <rect
+                className="part-hover"
+                x={partX - 6}
+                y={labelY - 8}
+                width={LYR_W + 12}
+                height={LYR_W + 56}
+                rx={12}
+                fill="rgba(124,247,208,.2)"
+              />
+              {/* Layer art (reuse existing SlotLayer artists) */}
+              <g transform={`translate(${cx}, ${yPx})`}>
+                <SlotLayer slot={c.slot} w={LYR_W} skew={0} />
+              </g>
+              {/* Callout label + leader line */}
+              <text
+                className="callout-text"
+                x={cx}
+                y={labelY}
+                textAnchor="middle"
+              >
+                {SLOT_META[c.slot]?.label || c.title || c.slot}
+              </text>
+              <line
+                className="callout-line"
+                x1={cx}
+                y1={labelY + 6}
+                x2={cx}
+                y2={yPx - 4}
+              />
+            </g>
+          )
+        })}
+      </svg>
       <div className="pd-legend">
         <span><i className="dot in" /> в наличии</span>
         <span><i className="dot negotiated" /> под заказ</span>

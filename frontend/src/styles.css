@@ -1326,3 +1326,73 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   flex: 1;
   min-width: 250px;
 }
+
+/* ===================== R2: Exploded SVG layers styles ===================== */
+.svg-part {
+  cursor: pointer;
+  transition: opacity 0.3s;
+}
+.svg-part .part-hover {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.svg-part:hover .part-hover,
+.svg-part.active .part-hover,
+.svg-part.highlight .part-hover {
+  opacity: 1;
+}
+.svg-part:hover .sketch-line,
+.svg-part.active .sketch-line,
+.svg-part.highlight .sketch-line {
+  stroke: #7cf7d0;
+  filter: drop-shadow(0 0 6px rgba(124,247,208,.6)) url(#pencil);
+}
+.svg-part:hover .callout-text,
+.svg-part.active .callout-text,
+.svg-part.highlight .callout-text {
+  fill: #7cf7d0;
+}
+.svg-part.unavailable:hover .sketch-line,
+.svg-part.unavailable.active .sketch-line {
+  stroke: #ef4444;
+  filter: drop-shadow(0 0 6px rgba(239,68,68,.6)) url(#pencil);
+}
+.svg-part.unavailable:hover .callout-text,
+.svg-part.unavailable.active .callout-text {
+  fill: #ef4444;
+}
+.svg-part .callout-text {
+  font-family: 'Courier New', monospace;
+  font-size: 7.5px;
+  fill: #b8c4d8;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-weight: 700;
+  pointer-events: none;
+}
+.svg-part .callout-line {
+  stroke: #6a7a94;
+  stroke-width: 0.5;
+  fill: none;
+  opacity: 0.8;
+}
+.pd-blowup .svg-part {
+}
+.pd-blowup .svg-part:focus-visible {
+  outline: 2px solid #4f7dff;
+  outline-offset: 2px;
+}
+/* Selected layer accent ring */
+.pd-blowup .svg-part.active .part-hover {
+  opacity: 1;
+}
+.pd-blowup .svg-part.active {
+  filter: drop-shadow(0 0 8px rgba(124,247,208,.4));
+}
+.pd-blowup .svg-part.unavailable {
+  opacity: 0.6;
+}
+.pd-blowup .svg-part.unavailable.active {
+  opacity: 1;
+}
+/* Keep the existing layer-btn/flat-hotspot styles untouched for flat parts */

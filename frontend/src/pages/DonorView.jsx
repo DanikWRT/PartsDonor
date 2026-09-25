@@ -42,7 +42,10 @@ export default function DonorView() {
       .then((r) => (r.ok ? r.json() : []))
       .then((schemas) => {
         const arr = Array.isArray(schemas) ? schemas : []
-        const norm = (s) => String(s || '').toLowerCase().trim()
+        // brand/model params come URL-encoded (hyphens for spaces), schema stores them
+        // with spaces — normalize both to a key of letters+digits so 'iPhone-13-Pro'
+        // matches 'iPhone 13 Pro'.
+        const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '')
         const schema = arr.find(
           (s) => norm(s.brand) === norm(brand) && norm(s.model) === norm(model),
         )

@@ -1375,6 +1375,7 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   stroke-width: 0.5;
   fill: none;
   opacity: 0.8;
+  pointer-events: none;
 }
 .pd-blowup .svg-part {
 }

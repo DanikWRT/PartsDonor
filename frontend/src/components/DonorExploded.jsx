@@ -434,13 +434,14 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
               role="button"
               tabIndex={0}
             >
-              {/* Part hover highlight rect */}
+              {/* Part hover-highlight hit area: sized to this layer's band (label..art)
+                  so adjacent layers don't overlap and swallow each other's clicks. */}
               <rect
                 className="part-hover"
                 x={partX - 6}
                 y={labelY - 8}
                 width={LYR_W + 12}
-                height={LYR_W + 56}
+                height={74}
                 rx={12}
                 fill="rgba(124,247,208,.2)"
               />

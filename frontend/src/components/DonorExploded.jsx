@@ -430,7 +430,7 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
               key={`${c.slot}-${c.part_id ?? i}`}
               className={`svg-part${unavCls}${activeCls}`}
               data-part={c.slot}
-              onClick={() => { onSelect(c); if (onSelectedKey) onSelectedKey(c) }}
+              onClick={() => { if (onSelect) onSelect(c); if (onSelectedKey) onSelectedKey(c) }}
               role="button"
               tabIndex={0}
             >
@@ -472,6 +472,7 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
         <span><i className="dot in" /> в наличии</span>
         <span><i className="dot negotiated" /> под заказ</span>
         <span><i className="dot sold" /> продано</span>
+        <span><i className="dot grey" /> скрыто</span>
       </div>
     </div>
   )

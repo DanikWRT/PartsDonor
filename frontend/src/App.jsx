@@ -8,6 +8,7 @@ import Cabinet from './pages/Cabinet.jsx'
 import Deal from './pages/Deal.jsx'
 import PartDetail from './pages/PartDetail.jsx'
 import BuyerCabinet from './pages/BuyerCabinet.jsx'
+import Kb from './pages/Kb.jsx'
 import { CartProvider, useCart } from './cart.jsx'
 import AuthPage from './pages/Auth.jsx'
 import { readSession, clearSession, ROLE_LABELS } from './auth.jsx'
@@ -38,6 +39,7 @@ function HeaderNav() {
       <nav className="pd-nav">
         <NavLink to="/" end>Каталог</NavLink>
         <NavLink to="/donor-lots">Доноры</NavLink>
+        <NavLink to="/kb">База знаний</NavLink>
         <NavLink to="/cabinet">Кабинет</NavLink>
         <NavLink to="/buyer">Покупателю</NavLink>
         <NavLink to="/deal">Сделка</NavLink>
@@ -71,6 +73,8 @@ export default function App() {
           <Route path="/buyer" element={<BuyerCabinet />} />
           <Route path="/deal" element={<Deal />} />
           <Route path="/deal/:id" element={<Deal />} />
+          <Route path="/kb" element={<Kb />} />
+          <Route path="/kb/:id" element={<Kb />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />
         </Routes>

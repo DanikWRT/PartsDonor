@@ -1397,3 +1397,42 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   opacity: 1;
 }
 /* Keep the existing layer-btn/flat-hotspot styles untouched for flat parts */
+
+/* ===== База знаний (BE-4) ===== */
+.pd-kb { display: flex; flex-direction: column; gap: 12px; }
+.pd-kb-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.pd-kb-head h2 { margin: 0 0 2px; }
+.pd-kb-head p { margin: 0; }
+.pd-chip { display: inline-block; padding: 2px 9px; border-radius: 999px; background: #e0e7ff; color: #4338ca; font-size: 12px; font-weight: 600; }
+.pd-badge-prime { background: #fef3c7; color: #b45309; }
+.pd-kb-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.pd-kb-tab {
+  border: 1px solid #d6dae2; background: #fff; color: #555; font-size: 13px;
+  font-weight: 600; padding: 7px 11px; border-radius: 999px; cursor: pointer;
+}
+.pd-kb-tab.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+.pd-kb-count { opacity: .8; font-weight: 400; }
+.pd-kb-list { display: grid; gap: 10px; }
+.pd-kb-card {
+  background: #fff; border: 1px solid #e6e7eb; border-radius: 12px; padding: 14px;
+  display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: #111;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.pd-kb-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,.08); }
+.pd-kb-card-top { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pd-kb-card-title { font-size: 16px; }
+.pd-kb-excerpt { color: #555; font-size: 13px; margin: 0; }
+.pd-kb-meta { color: #777; font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap; }
+.pd-kb-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.pd-kb-detail { background: #fff; border: 1px solid #e6e7eb; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.pd-kb-detail-top { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pd-kb-detail h2 { margin: 0; }
+.pd-kb-body { color: #222; line-height: 1.55; }
+.pd-kb-body p { margin: 0 0 8px; }
+.pd-modal { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+.pd-modal-box { background: #fff; border-radius: 14px; padding: 18px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
+.pd-modal-box h3 { margin: 0 0 12px; }
+.pd-kb-form { display: flex; flex-direction: column; gap: 10px; }
+.pd-kb-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #555; font-weight: 600; }
+.pd-kb-textarea { min-height: 120px; resize: vertical; font-family: inherit; }
+.pd-kb-form-actions { display: flex; gap: 8px; justify-content: flex-end; }

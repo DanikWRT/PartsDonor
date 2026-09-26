@@ -42,6 +42,8 @@ from app.models import (
     DonorRequest,
     Listing,
     ListingStatus,
+    KbArticle,
+    KbCategory,
     ListingSubscription,
     PartCondition,
     Review,
@@ -82,6 +84,12 @@ from app.schemas import (
     DonorLotDetail,
     DonorRequestIn,
     DonorRequestOut,
+    KbArticleIn,
+    KbArticleOut,
+    KbAuthorOut,
+    KbCategoryIn,
+    KbCategoryOut,
+    KbVoteIn,
 )
 from app.yookassa_client import new_payment_id, yookassa
 
@@ -1467,6 +1475,208 @@ async def create_review(payload: ReviewIn, db: AsyncSession = Depends(get_db)) -
                 seller.rating = round(sum(rows) / len(rows), 2)
                 await db.commit()
     return record
+
+
+# --- База знаний (BE-4) ---
+
+
+@router.get("/kb/categories", response_model=list[KbCategoryOut])
+async def kb_categories(db: AsyncSession = Depends(get_db)) -> list[KbCategoryOut]:
+    cats = list(
+        (await db.execute(select(KbCategory).order_by(KbCategory.sort, KbCategory.name)))
+        .scalars()
+        .all()
+    )
+    counts = dict(
+        (
+            await db.execute(
+                select(KbArticle.cat, func.count(KbArticle.id)).group_by(KbArticle.cat)
+            )
+        ).all()
+    )
+    return [KbCategoryOut(id=c.id, slug=c.slug, name=c.name, sort=c.sort,
+                          article_count=counts.get(c.slug, 0)) for c in cats]
+
+
+@router.get("/kb/articles", response_model=list[KbArticleOut])
+async def kb_articles(
+    cat: str | None = None,
+    q: str | None = None,
+    sort: str = "newest",
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> list[KbArticleOut]:
+    stmt = (
+        select(KbArticle)
+        .options(selectinload(KbArticle.author))
+        .order_by(KbArticle.created_at.desc())
+    )
+    if cat:
+        stmt = stmt.where(KbArticle.cat == cat)
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(
+            KbArticle.title.ilike(like)
+            | KbArticle.excerpt.ilike(like)
+            | KbArticle.body.ilike(like)
+            | KbArticle.tags.ilike(like)
+        )
+    if sort == "popular":
+        stmt = stmt.order_by(KbArticle.views.desc(), KbArticle.created_at.desc())
+    elif sort == "rating":
+        stmt = stmt.order_by(KbArticle.rating.desc(), KbArticle.created_at.desc())
+    else:
+        stmt = stmt.order_by(KbArticle.created_at.desc())
+    stmt = stmt.offset(offset).limit(limit)
+    rows = list((await db.execute(stmt)).scalars().all())
+    return [_kb_out(a) for a in rows]
+
+
+def _kb_out(a: KbArticle, author_name: str | None = None) -> KbArticleOut:
+    return KbArticleOut(
+        id=a.id, cat=a.cat, title=a.title, excerpt=a.excerpt, body=a.body,
+        model=a.model, tags=a.tags, author_id=a.author_id, priority=a.priority,
+        rating=a.rating, votes=a.votes, views=a.views,
+        created_at=a.created_at, updated_at=a.updated_at,
+        author_name=author_name if author_name is not None else (a.author.email if a.author else None),
+    )
+
+
+@router.get("/kb/articles/{article_id}", response_model=KbArticleOut)
+async def kb_article_get(
+    article_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> KbArticleOut:
+    a = (
+        await db.execute(
+            select(KbArticle).where(KbArticle.id == article_id).options(selectinload(KbArticle.author))
+        )
+    ).scalar_one_or_none()
+    if a is None:
+        raise HTTPException(status_code=404, detail="Статья не найдена")
+    author_name = a.author.email if a.author else None
+    a.views += 1
+    out = _kb_out(a, author_name)  # build BEFORE commit (avoids expired/lazy reload)
+    await db.commit()
+    return out
+
+
+@router.post("/kb/articles", response_model=KbArticleOut, status_code=201)
+async def kb_article_create(
+    payload: KbArticleIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> KbArticleOut:
+    # админ может указать автора; обычный пользователь = сам автор
+    author_id = payload.author_id if user.role == UserRole.admin else user.id
+    a = KbArticle(
+        cat=payload.cat, title=payload.title, excerpt=payload.excerpt, body=payload.body,
+        model=payload.model, tags=payload.tags, author_id=author_id,
+        priority=payload.priority, rating=payload.rating, votes=payload.votes,
+    )
+    db.add(a)
+    author = user if author_id == user.id else await db.get(User, author_id)
+    await db.commit()
+    await db.refresh(a)
+    return _kb_out(a, author.email if author else None)
+
+
+@router.patch("/kb/articles/{article_id}", response_model=KbArticleOut)
+async def kb_article_update(
+    article_id: uuid.UUID,
+    payload: KbArticleIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> KbArticleOut:
+    a = (
+        await db.execute(
+            select(KbArticle).where(KbArticle.id == article_id).options(selectinload(KbArticle.author))
+        )
+    ).scalar_one_or_none()
+    if a is None:
+        raise HTTPException(status_code=404, detail="Статья не найдена")
+    if user.role != UserRole.admin and a.author_id != user.id:
+        raise HTTPException(status_code=403, detail="Нельзя редактировать чужую статью")
+    author_name = a.author.email if a.author else None
+    for f in ("cat", "title", "excerpt", "body", "model", "tags", "priority", "rating", "votes"):
+        setattr(a, f, getattr(payload, f))
+    await db.commit()
+    await db.refresh(a)
+    return _kb_out(a, author_name)
+
+
+@router.delete("/kb/articles/{article_id}", status_code=204)
+async def kb_article_delete(
+    article_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    a = (
+        await db.execute(select(KbArticle).where(KbArticle.id == article_id))
+    ).scalar_one_or_none()
+    if a is None:
+        raise HTTPException(status_code=404, detail="Статья не найдена")
+    if user.role != UserRole.admin and a.author_id != user.id:
+        raise HTTPException(status_code=403, detail="Нельзя удалить чужую статью")
+    await db.delete(a)
+    await db.commit()
+
+
+@router.get("/kb/authors/top", response_model=list[KbAuthorOut])
+async def kb_authors_top(
+    limit: int = Query(default=10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+) -> list[KbAuthorOut]:
+    rows = (
+        await db.execute(
+            select(
+                KbArticle.author_id,
+                User.email,
+                func.count(KbArticle.id),
+                func.sum(KbArticle.views),
+                func.sum(KbArticle.rating),
+            )
+            .join(User, KbArticle.author_id == User.id)
+            .group_by(KbArticle.author_id, User.email)
+            .order_by(func.count(KbArticle.id).desc())
+            .limit(limit)
+        )
+    ).all()
+    return [
+        KbAuthorOut(
+            author_id=rid, author_name=email,
+            article_count=int(cnt), total_views=int(vws or 0), total_rating=float(rat or 0.0),
+        )
+        for rid, email, cnt, vws, rat in rows
+    ]
+
+
+@router.post("/kb/articles/{article_id}/vote", response_model=KbArticleOut)
+async def kb_article_vote(
+    article_id: uuid.UUID,
+    payload: KbVoteIn,
+    db: AsyncSession = Depends(get_db),
+) -> KbArticleOut:
+    a = (
+        await db.execute(
+            select(KbArticle).where(KbArticle.id == article_id).options(selectinload(KbArticle.author))
+        )
+    ).scalar_one_or_none()
+    if a is None:
+        raise HTTPException(status_code=404, detail="Статья не найдена")
+    # бегущее среднее + голоса
+    new_votes = max(0, a.votes + payload.delta)
+    if new_votes == 0:
+        a.rating = 0.0
+    else:
+        total = (a.rating * a.votes) + payload.rating * (1 if payload.delta > 0 else 0)
+        a.rating = round(total / new_votes, 2)
+    a.votes = new_votes
+    author_name = a.author.email if a.author else None
+    out = _kb_out(a, author_name)  # build BEFORE commit
+    await db.commit()
+    return out
 
 
 app.include_router(router)

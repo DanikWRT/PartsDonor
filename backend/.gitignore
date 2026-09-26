@@ -15,3 +15,5 @@ __pycache__/
 *.pyc
 *.egg-info/
 dist/
+# Загруженные фото (runtime-данные, создаются через POST /uploads)
+storage/

@@ -15,12 +15,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import func, select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -34,17 +36,32 @@ from app.models import (
     UserRole,
     Base,
     BuyerProfile,
+    BuyRequest,
+    BuyRequestStatus,
+    BuyResponseStatus,
+    BuyRequestType,
+    BuyRequestResponse,
     Company,
     Deal,
     DealStatus,
     DeviceSchema,
+    Donor,
     DonorLot,
+    DonorPart,
     DonorRequest,
+    DonorStatus,
     Listing,
     ListingStatus,
     ListingSubscription,
     PartCondition,
+    Photo,
     Review,
+    Dialog,
+    DialogParticipant,
+    Message,
+    Offer,
+    MessageKind,
+    OfferStatus,
 )
 from app.schemas import (
     CatalogDetail,
@@ -66,6 +83,15 @@ from app.schemas import (
     DeviceSchemaOut,
     DonorComponent,
     DonorSchema,
+    DonorIn,
+    DonorOut,
+    DonorDetail,
+    DonorUpdate,
+    DonorPublishOut,
+    DonorPartIn,
+    DonorPartOut,
+    PhotoOut,
+    UploadOut,
     HealthOut,
     ListingIn,
     ListingOut,
@@ -82,6 +108,23 @@ from app.schemas import (
     DonorLotDetail,
     DonorRequestIn,
     DonorRequestOut,
+    # BE-2
+    BuyRequestIn,
+    BuyRequestUpdate,
+    BuyRequestOut,
+    BuyRequestDetailOut,
+    BuyResponseIn,
+    BuyResponseOut,
+    BuyCountersOut,
+    # BE-3
+    DialogCreateIn,
+    DialogParticipantOut,
+    DialogOut,
+    DialogDetailOut,
+    MessageOut,
+    MessageSendIn,
+    OfferOut,
+    DialogReadOut,
 )
 from app.yookassa_client import new_payment_id, yookassa
 
@@ -1469,9 +1512,677 @@ async def create_review(payload: ReviewIn, db: AsyncSession = Depends(get_db)) -
     return record
 
 
+# ============================== DONORS / UPLOADS (BE-1) ==============================
+
+
+def _write_upload(dest: str, content: bytes) -> None:
+    with open(dest, "wb") as f:
+        f.write(content)
+
+
+async def _donor_out(db: AsyncSession, donor: Donor) -> DonorOut:
+    """Donor -> DonorOut (счётчик частей)."""
+    parts = donor.parts if donor.parts is not None else (
+        (await db.execute(select(DonorPart).where(DonorPart.donor_id == donor.id))).scalars().all()
+    )
+    return DonorOut(
+        id=donor.id,
+        seller_id=donor.seller_id,
+        device_schema_id=donor.device_schema_id,
+        brand=donor.brand,
+        model=donor.model,
+        title=donor.title,
+        price_rub=donor.price_rub,
+        condition=donor.condition,
+        provenance=donor.provenance,
+        status=donor.status.value if isinstance(donor.status, DonorStatus) else donor.status,
+        donor_lot_id=donor.donor_lot_id,
+        part_count=len(parts),
+        created_at=donor.created_at,
+        updated_at=donor.updated_at,
+    )
+
+
+async def _load_donor(db: AsyncSession, donor_id: uuid.UUID) -> Donor | None:
+    """Донор с предзагруженными parts и device_schema (избегаем MissingGreenlet)."""
+    stmt = (
+        select(Donor)
+        .options(selectinload(Donor.parts), selectinload(Donor.device_schema))
+        .where(Donor.id == donor_id)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+def _assert_donor_owner(user: User, donor: Donor) -> None:
+    """Донора может редактировать его продавец или admin."""
+    if user.role != UserRole.admin and (not user.company_id or user.company_id != donor.seller_id):
+        raise HTTPException(status_code=403, detail="No access to this donor")
+
+
+@router.get("/donors", response_model=list[DonorOut])
+async def list_my_donors(
+    donor_status: str | None = Query(default=None, alias="status"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.buyer, UserRole.admin)),
+) -> list[DonorOut]:
+    """Список доноров текущего пользователя (черновики/опубликованные)."""
+    stmt = select(Donor).options(selectinload(Donor.parts))
+    if user.role != UserRole.admin:
+        if not user.company_id:
+            return []
+        stmt = stmt.where(Donor.seller_id == user.company_id)
+    if donor_status:
+        stmt = stmt.where(Donor.status == donor_status)
+    stmt = stmt.order_by(Donor.updated_at.desc())
+    donors = list((await db.execute(stmt)).scalars().all())
+    return [await _donor_out(db, d) for d in donors]
+
+
+@router.post("/donors", response_model=DonorOut, status_code=201)
+async def create_donor(
+    payload: DonorIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
+) -> DonorOut:
+    """Создание донора (шаг 1 wizard): можно сразу передать состав частей."""
+    if user.company_id is None:
+        raise HTTPException(status_code=403, detail="У пользователя нет компании")
+    schema: DeviceSchema | None = None
+    if payload.device_schema_id:
+        schema = await db.get(DeviceSchema, payload.device_schema_id)
+        if schema is None:
+            raise HTTPException(status_code=400, detail="DeviceSchema not found")
+    brand = payload.brand or (schema.brand if schema else "")
+    model = payload.model or (schema.model if schema else "")
+    donor = Donor(
+        seller_id=user.company_id,
+        device_schema_id=payload.device_schema_id,
+        brand=brand,
+        model=model,
+        title=payload.title,
+        price_rub=payload.price_rub,
+        condition=payload.condition,
+        provenance=payload.provenance,
+        status=DonorStatus.draft,
+    )
+    db.add(donor)
+    await db.flush()
+    for i, p in enumerate(payload.parts):
+        db.add(DonorPart(
+            donor_id=donor.id,
+            slot=p.slot,
+            title=p.title,
+            inventree_part_id=p.inventree_part_id,
+            price_rub=p.price_rub,
+            status=p.status,
+            sort=p.sort or i,
+        ))
+    await db.commit()
+    donor = await _load_donor(db, donor.id)
+    return await _donor_out(db, donor)
+
+
+@router.get("/donors/{donor_id}", response_model=DonorDetail)
+async def get_donor_detail(
+    donor_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.buyer, UserRole.admin)),
+) -> DonorDetail:
+    """Карточка донора: состав частей + фото."""
+    donor = await _load_donor(db, donor_id)
+    if donor is None:
+        raise HTTPException(status_code=404, detail="Donor not found")
+    if user.role != UserRole.admin and (not user.company_id or user.company_id != donor.seller_id):
+        raise HTTPException(status_code=403, detail="No access to this donor")
+    photos = (
+        await db.execute(
+            select(Photo).where(Photo.owner_type == "donor", Photo.owner_id == donor.id).order_by(Photo.sort)
+        )
+    ).scalars().all()
+    out = await _donor_out(db, donor)
+    return DonorDetail(
+        **out.model_dump(),
+        parts=[DonorPartOut.model_validate(p) for p in donor.parts],
+        photos=[PhotoOut.model_validate(p) for p in photos],
+    )
+
+
+@router.patch("/donors/{donor_id}", response_model=DonorOut)
+async def update_donor(
+    donor_id: uuid.UUID,
+    payload: DonorUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
+) -> DonorOut:
+    donor = await _load_donor(db, donor_id)
+    if donor is None:
+        raise HTTPException(status_code=404, detail="Donor not found")
+    _assert_donor_owner(user, donor)
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        if k == "status" and v is not None:
+            try:
+                donor.status = DonorStatus(v)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Unknown status {v}")
+        elif v is not None:
+            setattr(donor, k, v)
+    await db.commit()
+    donor = await _load_donor(db, donor.id)
+    return await _donor_out(db, donor)
+
+
+@router.post("/donors/{donor_id}/parts", response_model=DonorPartOut, status_code=201)
+async def add_donor_part(
+    donor_id: uuid.UUID,
+    payload: DonorPartIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
+) -> DonorPartOut:
+    """Добавить деталь в состав донора (шаг 2-3 wizard: слот/цена/статус)."""
+    donor = await _load_donor(db, donor_id)
+    if donor is None:
+        raise HTTPException(status_code=404, detail="Donor not found")
+    _assert_donor_owner(user, donor)
+    part = DonorPart(
+        donor_id=donor.id,
+        slot=payload.slot,
+        title=payload.title,
+        inventree_part_id=payload.inventree_part_id,
+        price_rub=payload.price_rub,
+        status=payload.status,
+        sort=payload.sort,
+    )
+    db.add(part)
+    await db.commit()
+    await db.refresh(part)
+    return DonorPartOut.model_validate(part)
+
+
+@router.patch("/donors/{donor_id}/parts/{part_id}", response_model=DonorPartOut)
+async def update_donor_part(
+    donor_id: uuid.UUID,
+    part_id: uuid.UUID,
+    payload: DonorPartIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
+) -> DonorPartOut:
+    donor = await _load_donor(db, donor_id)
+    if donor is None:
+        raise HTTPException(status_code=404, detail="Donor not found")
+    _assert_donor_owner(user, donor)
+    part = (
+        await db.execute(select(DonorPart).where(DonorPart.id == part_id, DonorPart.donor_id == donor_id))
+    ).scalar_one_or_none()
+    if part is None:
+        raise HTTPException(status_code=404, detail="Donor part not found")
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        if v is not None:
+            setattr(part, k, v)
+    await db.commit()
+    await db.refresh(part)
+    return DonorPartOut.model_validate(part)
+
+
+@router.delete("/donors/{donor_id}/parts/{part_id}", response_model=dict)
+async def delete_donor_part(
+    donor_id: uuid.UUID,
+    part_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
+) -> dict:
+    donor = await _load_donor(db, donor_id)
+    if donor is None:
+        raise HTTPException(status_code=404, detail="Donor not found")
+    _assert_donor_owner(user, donor)
+    part = (
+        await db.execute(select(DonorPart).where(DonorPart.id == part_id, DonorPart.donor_id == donor_id))
+    ).scalar_one_or_none()
+    if part is None:
+        raise HTTPException(status_code=404, detail="Donor part not found")
+    await db.delete(part)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/donors/{donor_id}/publish", response_model=DonorPublishOut)
+async def publish_donor(
+    donor_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
+) -> DonorPublishOut:
+    """Публикация донора: статус -> published и создание DonorLot для витрины (S1-совместимо)."""
+    donor = await _load_donor(db, donor_id)
+    if donor is None:
+        raise HTTPException(status_code=404, detail="Donor not found")
+    _assert_donor_owner(user, donor)
+    donor_lot_id = donor.donor_lot_id
+    created = False
+    if donor.status != DonorStatus.published or donor_lot_id is None:
+        if not donor.device_schema_id:
+            raise HTTPException(status_code=400, detail="Для публикации нужен device_schema_id")
+        lot = DonorLot(
+            device_schema_id=donor.device_schema_id,
+            seller_id=donor.seller_id,
+            title=donor.title or f"{donor.brand} {donor.model}".strip(),
+            price_rub=donor.price_rub,
+            condition=donor.condition,
+            provenance=donor.provenance,
+            status=ListingStatus.active,
+        )
+        db.add(lot)
+        await db.flush()
+        donor_lot_id = lot.id
+        donor.donor_lot_id = donor_lot_id
+        donor.status = DonorStatus.published
+        await db.commit()
+        created = True
+    donor = await _load_donor(db, donor.id)
+    return DonorPublishOut(
+        donor=await _donor_out(db, donor),
+        donor_lot_id=donor_lot_id,
+        message="ok (DonorLot created)" if created else "already published",
+    )
+
+
+@router.post("/uploads", response_model=UploadOut, status_code=201)
+async def upload_photo(
+    file: UploadFile = File(...),
+    owner_type: str = Form(default="donor"),
+    owner_id: uuid.UUID | None = Form(default=None),
+    sort: int = Form(default=0),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
+) -> UploadOut:
+    """Загрузка фото: multipart -> disk storage + запись в photos (BE-1).
+
+    owner_type/owner_id — куда привязать фото (опционально; можно привязать позже).
+    """
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"}:
+        ext = ".jpg"
+    os.makedirs(settings.upload_dir, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}{ext}"
+    dest = os.path.join(settings.upload_dir, filename)
+    content = await file.read()
+    await asyncio.to_thread(_write_upload, dest, content)
+    url = f"{settings.upload_url_prefix}/{filename}"
+    photo = Photo(owner_type=owner_type, owner_id=owner_id or uuid.uuid4(), url=url, sort=sort)
+    db.add(photo)
+    await db.commit()
+    await db.refresh(photo)
+    return UploadOut(photo=PhotoOut.model_validate(photo), url=url)
+
+
+
+# ============================== BUY REQUESTS (BE-2) ==============================
+
+
+@router.get("/buy-requests", response_model=list[BuyRequestOut])
+async def list_buy_requests(
+    type: BuyRequestType | None = Query(default=None),
+    brand: str | None = Query(default=None),
+    status: BuyRequestStatus = Query(default=BuyRequestStatus.open),
+    budget_to: float | None = Query(default=None),
+    budget_from: float | None = Query(default=None),
+    urgent: bool | None = Query(default=None),
+    city: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+) -> list[BuyRequestOut]:
+    """Список заявок «Куплю» с фильтрами и пагинацией."""
+    stmt = select(BuyRequest).where(BuyRequest.status == status).order_by(BuyRequest.created_at.desc())
+    if type is not None:
+        stmt = stmt.where(BuyRequest.type == type)
+    if brand is not None:
+        stmt = stmt.where(BuyRequest.brand.ilike(f"%{brand}%"))
+    if budget_to is not None:
+        stmt = stmt.where(BuyRequest.budget <= budget_to)
+    if budget_from is not None:
+        stmt = stmt.where(BuyRequest.budget >= budget_from)
+    if urgent is not None:
+        stmt = stmt.where(BuyRequest.urgent == urgent)
+    if city is not None:
+        stmt = stmt.where(BuyRequest.city.ilike(f"%{city}%"))
+    records = list((await db.execute(stmt.offset(offset).limit(limit))).scalars().all())
+
+    # Загружаем buyer_name для каждого
+    out: list[BuyRequestOut] = []
+    for r in records:
+        buyer = await db.get(Company, r.buyer_id)
+        out.append(BuyRequestOut(
+            id=r.id,
+            type=r.type,
+            brand=r.brand,
+            model=r.model,
+            cond=r.cond,
+            budget=r.budget,
+            urgent=r.urgent,
+            city=r.city,
+            buyer_id=r.buyer_id,
+            status=r.status,
+            created_at=r.created_at,
+            buyer_name=buyer.name if buyer else None,
+        ))
+    return out
+
+
+@router.post("/buy-requests", response_model=BuyRequestOut, status_code=201)
+async def create_buy_request(
+    payload: BuyRequestIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> BuyRequestOut:
+    """Создать заявку «Куплю». buyer_id = user.company_id."""
+    if user.company_id is None:
+        raise HTTPException(status_code=403, detail="У пользователя нет компании")
+    record = BuyRequest(
+        type=payload.type,
+        brand=payload.brand,
+        model=payload.model,
+        cond=payload.cond,
+        budget=payload.budget,
+        urgent=payload.urgent or False,
+        city=payload.city,
+        buyer_id=user.company_id,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    buyer = await db.get(Company, record.buyer_id)
+    return BuyRequestOut(
+        id=record.id,
+        type=record.type,
+        brand=record.brand,
+        model=record.model,
+        cond=record.cond,
+        budget=record.budget,
+        urgent=record.urgent,
+        city=record.city,
+        buyer_id=record.buyer_id,
+        status=record.status,
+        created_at=record.created_at,
+        buyer_name=buyer.name if buyer else None,
+    )
+
+
+@router.get("/buy-requests/counters", response_model=BuyCountersOut)
+async def buy_request_counters(
+    db: AsyncSession = Depends(get_db),
+) -> BuyCountersOut:
+    """Счётчики заявок по типам, статусам и срочности."""
+    # total_open
+    total_open = (await db.execute(
+        select(func.count()).where(BuyRequest.status == BuyRequestStatus.open)
+    )).scalar_one()
+    # urgent
+    urgent = (await db.execute(
+        select(func.count()).where(BuyRequest.urgent == True, BuyRequest.status == BuyRequestStatus.open)  # noqa: E712
+    )).scalar_one()
+    # by_type
+    by_type_rows = (await db.execute(
+        select(BuyRequest.type, func.count()).where(BuyRequest.status == BuyRequestStatus.open).group_by(BuyRequest.type)
+    )).all()
+    by_type = {t.value: c for t, c in by_type_rows}
+    # by_status
+    by_status_rows = (await db.execute(
+        select(BuyRequest.status, func.count()).group_by(BuyRequest.status)
+    )).all()
+    by_status = {s.value: c for s, c in by_status_rows}
+    return BuyCountersOut(total_open=total_open, urgent=urgent, by_type=by_type, by_status=by_status)
+
+
+@router.get("/buy-requests/{id}", response_model=BuyRequestDetailOut)
+async def get_buy_request(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> BuyRequestDetailOut:
+    """Деталь заявки + список откликов."""
+    record = await db.get(BuyRequest, id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Buy request not found")
+    responses = await db.execute(select(BuyRequestResponse).where(BuyRequestResponse.buy_request_id == id))
+    resp_rows = responses.scalars().all()
+    out_responses: list[BuyResponseOut] = []
+    for r in resp_rows:
+        seller = await db.get(Company, r.seller_id)
+        out_responses.append(BuyResponseOut(
+            id=r.id,
+            buy_request_id=r.buy_request_id,
+            seller_id=r.seller_id,
+            message=r.message,
+            offer_price=r.offer_price,
+            status=r.status,
+            created_at=r.created_at,
+            seller_name=seller.name if seller else None,
+        ))
+    buyer = await db.get(Company, record.buyer_id)
+    return BuyRequestDetailOut(
+        id=record.id,
+        type=record.type,
+        brand=record.brand,
+        model=record.model,
+        cond=record.cond,
+        budget=record.budget,
+        urgent=record.urgent,
+        city=record.city,
+        buyer_id=record.buyer_id,
+        status=record.status,
+        created_at=record.created_at,
+        buyer_name=buyer.name if buyer else None,
+        responses=out_responses,
+    )
+
+
+@router.patch("/buy-requests/{id}", response_model=BuyRequestOut)
+async def update_buy_request(
+    id: uuid.UUID,
+    payload: BuyRequestUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> BuyRequestOut:
+    """Обновить заявку (только владелец или admin)."""
+    record = await db.get(BuyRequest, id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Buy request not found")
+    if user.role != UserRole.admin and record.buyer_id != user.company_id:
+        raise HTTPException(status_code=403, detail="No access")
+    for k, v in payload.model_dump(exclude_none=True).items():
+        setattr(record, k, v)
+    await db.commit()
+    await db.refresh(record)
+    buyer = await db.get(Company, record.buyer_id)
+    return BuyRequestOut(
+        id=record.id,
+        type=record.type,
+        brand=record.brand,
+        model=record.model,
+        cond=record.cond,
+        budget=record.budget,
+        urgent=record.urgent,
+        city=record.city,
+        buyer_id=record.buyer_id,
+        status=record.status,
+        created_at=record.created_at,
+        buyer_name=buyer.name if buyer else None,
+    )
+
+
+@router.delete("/buy-requests/{id}", response_model=dict)
+async def delete_buy_request(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> dict:
+    """Удалить заявку + каскадно отклики (только владелец или admin)."""
+    record = await db.get(BuyRequest, id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Buy request not found")
+    if user.role != UserRole.admin and record.buyer_id != user.company_id:
+        raise HTTPException(status_code=403, detail="No access")
+    await db.delete(record)
+    await db.commit()
+    return {"ok": True}
+
+
+
+@router.get("/buy-requests/me", response_model=list[BuyRequestOut])
+async def my_buy_requests(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> list[BuyRequestOut]:
+    """Свои заявки текущего пользователя."""
+    if user.company_id is None:
+        return []
+    records = list((await db.execute(
+        select(BuyRequest).where(BuyRequest.buyer_id == user.company_id).order_by(BuyRequest.created_at.desc())
+    )).scalars().all())
+    out: list[BuyRequestOut] = []
+    for r in records:
+        buyer = await db.get(Company, r.buyer_id)
+        out.append(BuyRequestOut(
+            id=r.id, type=r.type, brand=r.brand, model=r.model, cond=r.cond,
+            budget=r.budget, urgent=r.urgent, city=r.city, buyer_id=r.buyer_id,
+            status=r.status, created_at=r.created_at,
+            buyer_name=buyer.name if buyer else None,
+        ))
+    return out
+
+
+@router.post("/buy-requests/{id}/responses", response_model=BuyResponseOut, status_code=201)
+async def create_buy_request_response(
+    id: uuid.UUID,
+    payload: BuyResponseIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
+) -> BuyResponseOut:
+    """Seller responds to a buy request."""
+    if user.company_id is None:
+        raise HTTPException(status_code=403, detail="У пользователя нет компании")
+    br = await db.get(BuyRequest, id)
+    if br is None:
+        raise HTTPException(status_code=404, detail="Buy request not found")
+    if br.status != BuyRequestStatus.open:
+        raise HTTPException(status_code=409, detail="заявка закрыта")
+    record = BuyRequestResponse(
+        buy_request_id=id,
+        seller_id=user.company_id,
+        message=payload.message,
+        offer_price=payload.offer_price,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    seller = await db.get(Company, record.seller_id)
+    return BuyResponseOut(
+        id=record.id,
+        buy_request_id=record.buy_request_id,
+        seller_id=record.seller_id,
+        message=record.message,
+        offer_price=record.offer_price,
+        status=record.status,
+        created_at=record.created_at,
+        seller_name=seller.name if seller else None,
+    )
+
+
+@router.get("/buy-requests/{id}/responses", response_model=list[BuyResponseOut])
+async def list_buy_request_responses(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[BuyResponseOut]:
+    """Список откликов заявки (владелец запроса, seller или admin)."""
+    br = await db.get(BuyRequest, id)
+    if br is None:
+        raise HTTPException(status_code=404, detail="Buy request not found")
+    if user.role != UserRole.admin:
+        is_owner = user.company_id == br.buyer_id
+        is_seller = False
+        if not is_owner:
+            resp = await db.execute(select(BuyRequestResponse).where(
+                BuyRequestResponse.buy_request_id == id,
+                BuyRequestResponse.seller_id == user.company_id
+            ))
+            is_seller = resp.scalar_one_or_none() is not None
+        if not is_owner and not is_seller:
+            raise HTTPException(status_code=403, detail="No access")
+    responses = await db.execute(select(BuyRequestResponse).where(BuyRequestResponse.buy_request_id == id))
+    resp_rows = responses.scalars().all()
+    out: list[BuyResponseOut] = []
+    for r in resp_rows:
+        seller = await db.get(Company, r.seller_id)
+        out.append(BuyResponseOut(
+            id=r.id, buy_request_id=r.buy_request_id, seller_id=r.seller_id,
+            message=r.message, offer_price=r.offer_price, status=r.status,
+            created_at=r.created_at, seller_name=seller.name if seller else None,
+        ))
+    return out
+
+
+@router.patch("/buy-requests/{id}/responses/{rid}", response_model=BuyResponseOut)
+async def accept_buy_request_response(
+    id: uuid.UUID,
+    rid: uuid.UUID,
+    payload: BuyResponseIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> BuyResponseOut:
+    """Принять или отклонить отклик. При принятии — auto-accept request, reject other pending."""
+    if user.company_id is None:
+        raise HTTPException(status_code=403, detail="У пользователя нет компании")
+    br = await db.get(BuyRequest, id)
+    if br is None:
+        raise HTTPException(status_code=404, detail="Buy request not found")
+    if user.role != UserRole.admin and br.buyer_id != user.company_id:
+        raise HTTPException(status_code=403, detail="No access")
+    resp = await db.get(BuyRequestResponse, rid)
+    if resp is None or resp.buy_request_id != id:
+        raise HTTPException(status_code=404, detail="Response not found")
+    new_status = payload.status if hasattr(payload, 'status') else None
+    # Determine status from request body
+    data = payload.model_dump(exclude_none=True)
+    resp_status = data.get("status")
+    if resp_status is None:
+        raise HTTPException(status_code=400, detail="status required (accepted|rejected)")
+    if resp_status not in ("accepted", "rejected"):
+        raise HTTPException(status_code=400, detail="status must be accepted or rejected")
+    resp.status = BuyResponseStatus(resp_status)
+    if resp_status == "accepted":
+        br.status = BuyRequestStatus.accepted
+        # auto-reject all other pending responses
+        others = await db.execute(select(BuyRequestResponse).where(
+            BuyRequestResponse.buy_request_id == id,
+            BuyRequestResponse.id != rid,
+            BuyRequestResponse.status == BuyResponseStatus.pending
+        ))
+        for other in others.scalars().all():
+            other.status = BuyResponseStatus.rejected
+    await db.commit()
+    await db.refresh(resp)
+    seller = await db.get(Company, resp.seller_id)
+    return BuyResponseOut(
+        id=resp.id,
+        buy_request_id=resp.buy_request_id,
+        seller_id=resp.seller_id,
+        message=resp.message,
+        offer_price=resp.offer_price,
+        status=resp.status,
+        created_at=resp.created_at,
+        seller_name=seller.name if seller else None,
+    )
+
+
+
 app.include_router(router)
 app.include_router(auth_router)
 app.include_router(admin_router)
+
+# BE-1: отдача загруженных фото (static). POST /uploads — на router, GET — статика.
+os.makedirs(settings.upload_dir, exist_ok=True)
+app.mount(settings.upload_url_prefix, StaticFiles(directory=settings.upload_dir), name="uploads")
 
 
 @app.get("/", include_in_schema=False)
@@ -1489,3 +2200,506 @@ async def on_startup() -> None:
         log.warning("[startup] create_all warning: %s", exc)
     log.info("[startup] PartsDonor API started. InvenTree=%s health=%s",
              inventree.base_url, await inventree.health())
+
+
+# ============================== CHAT (BE-3) ==============================
+
+
+async def _get_participant(
+    dialog_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db: AsyncSession,
+) -> DialogParticipant | None:
+    return (await db.execute(
+        select(DialogParticipant).where(
+            DialogParticipant.dialog_id == dialog_id,
+            DialogParticipant.user_id == user_id,
+        )
+    )).scalar_one_or_none()
+
+
+def _other_participant(
+    participants: list[DialogParticipant],
+    user_id: uuid.UUID,
+) -> DialogParticipant | None:
+    for p in participants:
+        if p.user_id != user_id:
+            return p
+    return None
+
+
+@router.get("/dialogs")
+async def list_dialogs(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.seller, UserRole.admin)),
+) -> list[DialogOut]:
+    """Список диалогов текущего пользователя."""
+    stmt = (
+        select(DialogParticipant)
+        .where(DialogParticipant.user_id == user.id)
+        .order_by(DialogParticipant.dialog_id.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+
+    dialog_ids = [r.dialog_id for r in rows]
+    if not dialog_ids:
+        return []
+
+    # Загружаем диалоги с last_message
+    dialogs_stmt = (
+        select(Dialog)
+        .where(Dialog.id.in_(dialog_ids))
+        .options(
+            selectinload(Dialog.messages).selectinload(Message.author),
+            selectinload(Dialog.messages).selectinload(Message.offer),
+        )
+    )
+    dialog_rows = (await db.execute(dialogs_stmt)).scalars().all()
+    dialog_map = {d.id: d for d in dialog_rows}
+
+    # Загружаем участников для получения other_participant
+    part_stmt = (
+        select(DialogParticipant)
+        .where(DialogParticipant.dialog_id.in_(dialog_ids))
+        .options(selectinload(DialogParticipant.user))
+    )
+    part_rows = (await db.execute(part_stmt)).scalars().all()
+    parts_by_dialog: dict[uuid.UUID, list[DialogParticipant]] = {}
+    for p in part_rows:
+        parts_by_dialog.setdefault(p.dialog_id, []).append(p)
+
+    # Загружаем companies для имён
+    company_ids = set()
+    for p in parts_by_dialog.values():
+        for pp in p:
+            if pp.user_id != user.id:
+                company_ids.add(pp.user.company_id) if pp.user.company_id else None
+
+    companies = {}
+    if company_ids:
+        comp_rows = (await db.execute(select(Company).where(Company.id.in_(company_ids)))).scalars().all()
+        companies = {c.id: c for c in comp_rows}
+
+    result = []
+    for pp in rows:
+        dialog = dialog_map.get(pp.dialog_id)
+        if dialog is None:
+            continue
+
+        # Вычисляем unread_count
+        other = _other_participant(parts_by_dialog.get(pp.dialog_id, []), user.id)
+        last_read = pp.last_read_at
+        epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        unread = 0
+        if last_read is None:
+            last_read = epoch
+        for msg in dialog.messages:
+            if msg.author_id != user.id and msg.created_at > last_read:
+                unread += 1
+
+        # last_message
+        last_msg = None
+        if dialog.messages:
+            last_msg = max(dialog.messages, key=lambda m: m.created_at or datetime.min.replace(tzinfo=timezone.utc))
+
+        # other participant info
+        other_id = None
+        other_name = ""
+        if other and other.user_id != user.id:
+            other_id = other.user_id
+            comp = companies.get(other.user.company_id) if other.user.company_id else None
+            other_name = comp.name if comp else (other.user.email if other.user.email else str(other.user_id))
+
+        result.append(DialogOut(
+            id=dialog.id,
+            listing_id=dialog.listing_id,
+            donor_lot_id=dialog.donor_lot_id,
+            created_at=dialog.created_at,
+            updated_at=dialog.updated_at,
+            unread_count=unread,
+            last_message=MessageOut(
+                id=last_msg.id,
+                dialog_id=last_msg.dialog_id,
+                author_id=last_msg.author_id,
+                kind=last_msg.kind,
+                body=last_msg.body,
+                offer_id=last_msg.offer_id,
+                offer_status=last_msg.offer.status if last_msg.offer else None,
+                attachment_url=last_msg.attachment_url,
+                created_at=last_msg.created_at,
+                read=last_msg.created_at <= last_read if last_msg.created_at else True,
+            ) if last_msg else None,
+            other_participant_id=other_id or uuid.UUID(int=0),
+            other_participant_name=other_name,
+        ))
+
+    result.sort(key=lambda d: d.updated_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    return result
+
+
+@router.post("/dialogs", response_model=DialogDetailOut, status_code=201)
+async def create_dialog(
+    payload: DialogCreateIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.seller, UserRole.admin)),
+) -> DialogDetailOut:
+    """Создать или получить существующий диалог между me и participant_id."""
+    if payload.participant_id == user.id:
+        raise HTTPException(status_code=400, detail="Нельзя создать диалог с самим собой")
+
+    # Ищем существующий диалог для этой пары
+    existing = await db.execute(select(DialogParticipant).where(
+        DialogParticipant.user_id == user.id,
+    ))
+    my_parts = existing.scalars().all()
+
+    for my_part in my_parts:
+        other = await db.execute(select(DialogParticipant).where(
+            DialogParticipant.dialog_id == my_part.dialog_id,
+            DialogParticipant.user_id == payload.participant_id,
+        ))
+        if other.scalar_one_or_none():
+            dialog = await db.get(Dialog, my_part.dialog_id)
+            if dialog:
+                return await _dialog_detail_out(dialog, payload.participant_id, db, user)
+
+    # Создаём новый диалог
+    dialog = Dialog(
+        listing_id=payload.listing_id,
+        donor_lot_id=payload.donor_lot_id,
+    )
+    db.add(dialog)
+    await db.flush()
+    await db.refresh(dialog)
+
+    part1 = DialogParticipant(dialog_id=dialog.id, user_id=user.id)
+    part2 = DialogParticipant(dialog_id=dialog.id, user_id=payload.participant_id)
+    db.add_all([part1, part2])
+    await db.commit()
+    await db.refresh(dialog)
+
+    return await _dialog_detail_out(dialog, payload.participant_id, db, user)
+
+
+async def _dialog_detail_out(
+    dialog: Dialog,
+    participant_id: uuid.UUID,
+    db: AsyncSession,
+    user: User,
+) -> DialogDetailOut:
+    """Помощник: строит DialogDetailOut из диалога."""
+    # participants
+    parts_stmt = (
+        select(DialogParticipant)
+        .where(DialogParticipant.dialog_id == dialog.id)
+        .options(selectinload(DialogParticipant.user))
+    )
+    parts_rows = (await db.execute(parts_stmt)).scalars().all()
+
+    companies = {}
+    company_ids = set()
+    for p in parts_rows:
+        if p.user_id != user.id:
+            company_ids.add(p.user.company_id) if p.user.company_id else None
+    if company_ids:
+        comp_rows = (await db.execute(select(Company).where(Company.id.in_(company_ids)))).scalars().all()
+        companies = {c.id: c for c in comp_rows}
+
+    participants = [
+        DialogParticipantOut(
+            dialog_id=p.dialog_id,
+            user_id=p.user_id,
+            last_read_at=p.last_read_at,
+        )
+        for p in parts_rows
+    ]
+
+    other_id = uuid.UUID(int=0)
+    other_name = ""
+    for p in parts_rows:
+        if p.user_id != user.id:
+            other_id = p.user_id
+            comp = companies.get(p.user.company_id) if p.user.company_id else None
+            other_name = comp.name if comp else (p.user.email if p.user.email else str(p.user_id))
+
+    return DialogDetailOut(
+        id=dialog.id,
+        listing_id=dialog.listing_id,
+        donor_lot_id=dialog.donor_lot_id,
+        created_at=dialog.created_at,
+        updated_at=dialog.updated_at,
+        unread_count=0,
+        last_message=None,
+        other_participant_id=other_id,
+        other_participant_name=other_name,
+        participants=participants,
+    )
+
+
+@router.get("/dialogs/{dialog_id}")
+async def get_dialog(
+    dialog_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.seller, UserRole.admin)),
+) -> DialogDetailOut:
+    """Получить диалог по ID (только если пользователь — участник)."""
+    dialog = await db.get(Dialog, dialog_id)
+    if dialog is None:
+        raise HTTPException(status_code=404, detail="Dialog not found")
+
+    participant = await _get_participant(dialog_id, user.id, db)
+    if participant is None:
+        raise HTTPException(status_code=404, detail="Not a participant")
+
+    return await _dialog_detail_out(dialog, user.id, db, user)
+
+
+@router.get("/dialogs/{dialog_id}/messages", response_model=list[MessageOut])
+async def get_messages(
+    dialog_id: uuid.UUID,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.seller, UserRole.admin)),
+) -> list[MessageOut]:
+    """Получить сообщения диалога (ascending)."""
+    participant = await _get_participant(dialog_id, user.id, db)
+    if participant is None:
+        raise HTTPException(status_code=403, detail="Not a participant")
+
+    stmt = (
+        select(Message)
+        .where(Message.dialog_id == dialog_id)
+        .order_by(Message.created_at.asc())
+        .offset(offset)
+        .limit(limit)
+        .options(selectinload(Message.author).selectinload(User.company), selectinload(Message.offer))
+    )
+    messages = (await db.execute(stmt)).scalars().all()
+
+    last_read = participant.last_read_at or datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+    result = []
+    for msg in messages:
+        result.append(MessageOut(
+            id=msg.id,
+            dialog_id=msg.dialog_id,
+            author_id=msg.author_id,
+            kind=msg.kind,
+            body=msg.body,
+            offer_id=msg.offer_id,
+            offer_status=msg.offer.status if msg.offer else None,
+            attachment_url=msg.attachment_url,
+            created_at=msg.created_at,
+            read=msg.created_at <= last_read,
+        ))
+    return result
+
+
+@router.post("/dialogs/{dialog_id}/messages", response_model=MessageOut, status_code=201)
+async def send_message(
+    dialog_id: uuid.UUID,
+    payload: MessageSendIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.seller, UserRole.admin)),
+) -> MessageOut:
+    """Отправить сообщение в диалог."""
+    participant = await _get_participant(dialog_id, user.id, db)
+    if participant is None:
+        raise HTTPException(status_code=403, detail="Not a participant")
+
+    # Валидация
+    if payload.kind == "text":
+        if not payload.body or not payload.body.strip():
+            raise HTTPException(status_code=400, detail="body is required for text messages")
+    elif payload.kind == "offer":
+        if payload.offer_price is None or payload.offer_price <= 0:
+            raise HTTPException(status_code=400, detail="offer_price > 0 is required for offer messages")
+    elif payload.kind == "attachment":
+        if not payload.attachment_url:
+            raise HTTPException(status_code=400, detail="attachment_url is required for attachment messages")
+    else:
+        raise HTTPException(status_code=400, detail="Invalid kind")
+
+    # Создаём offer если kind=offer
+    offer_id = None
+    if payload.kind == "offer":
+        offer = Offer(
+            dialog_id=dialog_id,
+            sender_id=user.id,
+            price_rub=payload.offer_price,
+            status="pending",
+        )
+        db.add(offer)
+        await db.flush()
+        await db.refresh(offer)
+        offer_id = offer.id
+
+    msg = Message(
+        dialog_id=dialog_id,
+        author_id=user.id,
+        kind=payload.kind,
+        body=payload.body or "",
+        offer_id=offer_id,
+        attachment_url=payload.attachment_url,
+    )
+    db.add(msg)
+    await db.flush()
+    await db.refresh(msg)
+
+    # Обновляем last_read_at отправителя
+    participant.last_read_at = datetime.now(timezone.utc)
+    # Трогаем updated_at диалога
+    dialog = await db.get(Dialog, dialog_id)
+    if dialog:
+        dialog.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(msg)
+
+    return MessageOut(
+        id=msg.id,
+        dialog_id=msg.dialog_id,
+        author_id=msg.author_id,
+        kind=msg.kind,
+        body=msg.body,
+        offer_id=msg.offer_id,
+        offer_status=msg.offer.status if msg.offer else None,
+        attachment_url=msg.attachment_url,
+        created_at=msg.created_at,
+        read=True,
+    )
+
+
+@router.post("/dialogs/{dialog_id}/read", response_model=DialogReadOut)
+async def mark_read(
+    dialog_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.seller, UserRole.admin)),
+) -> DialogReadOut:
+    """Пометить сообщения как прочитанные."""
+    participant = await _get_participant(dialog_id, user.id, db)
+    if participant is None:
+        raise HTTPException(status_code=403, detail="Not a participant")
+
+    participant.last_read_at = datetime.now(timezone.utc)
+    dialog = await db.get(Dialog, dialog_id)
+    if dialog:
+        dialog.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    return DialogReadOut(ok=True)
+
+
+@router.post("/offers/{offer_id}/accept", response_model=OfferOut)
+async def accept_offer(
+    offer_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.seller, UserRole.admin)),
+) -> OfferOut:
+    """Принять оффер (может только другой участник)."""
+    offer = await db.get(Offer, offer_id)
+    if offer is None:
+        raise HTTPException(status_code=404, detail="Offer not found")
+
+    if offer.status != "pending":
+        raise HTTPException(status_code=409, detail="Offer already resolved")
+
+    if offer.sender_id == user.id:
+        raise HTTPException(status_code=403, detail="Sender cannot accept their own offer")
+
+    # Проверяем, что пользователь — участник диалога
+    participant = await _get_participant(offer.dialog_id, user.id, db)
+    if participant is None:
+        raise HTTPException(status_code=403, detail="Not a participant")
+
+    offer.status = "accepted"
+    await db.commit()
+    await db.refresh(offer)
+    return OfferOut(
+        id=offer.id,
+        dialog_id=offer.dialog_id,
+        sender_id=offer.sender_id,
+        price_rub=offer.price_rub,
+        status=offer.status,
+        created_at=offer.created_at,
+    )
+
+
+@router.post("/offers/{offer_id}/reject", response_model=OfferOut)
+async def reject_offer(
+    offer_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.seller, UserRole.admin)),
+) -> OfferOut:
+    """Отклонить оффер (может только другой участник)."""
+    offer = await db.get(Offer, offer_id)
+    if offer is None:
+        raise HTTPException(status_code=404, detail="Offer not found")
+
+    if offer.status != "pending":
+        raise HTTPException(status_code=409, detail="Offer already resolved")
+
+    if offer.sender_id == user.id:
+        raise HTTPException(status_code=403, detail="Sender cannot reject their own offer")
+
+    participant = await _get_participant(offer.dialog_id, user.id, db)
+    if participant is None:
+        raise HTTPException(status_code=403, detail="Not a participant")
+
+    offer.status = "rejected"
+    await db.commit()
+    await db.refresh(offer)
+    return OfferOut(
+        id=offer.id,
+        dialog_id=offer.dialog_id,
+        sender_id=offer.sender_id,
+        price_rub=offer.price_rub,
+        status=offer.status,
+        created_at=offer.created_at,
+    )
+
+
+@router.get("/offers", response_model=list[OfferOut])
+async def list_offers(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.seller, UserRole.admin)),
+) -> list[OfferOut]:
+    """Список офферов в диалогах текущего пользователя."""
+    # Находим все dialog_id пользователя
+    parts_stmt = (
+        select(DialogParticipant.dialog_id)
+        .where(DialogParticipant.user_id == user.id)
+    )
+    dialog_ids = list((await db.execute(parts_stmt)).scalars().all())
+
+    if not dialog_ids:
+        return []
+
+    stmt = (
+        select(Offer)
+        .where(Offer.dialog_id.in_(dialog_ids))
+        .order_by(Offer.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .options(selectinload(Offer.sender).selectinload(User.company))
+    )
+    offers = (await db.execute(stmt)).scalars().all()
+
+    result = []
+    for o in offers:
+        result.append(OfferOut(
+            id=o.id,
+            dialog_id=o.dialog_id,
+            sender_id=o.sender_id,
+            price_rub=o.price_rub,
+            status=o.status,
+            created_at=o.created_at,
+        ))
+    return result

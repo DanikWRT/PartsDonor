@@ -8,6 +8,8 @@ import Cabinet from './pages/Cabinet.jsx'
 import Deal from './pages/Deal.jsx'
 import PartDetail from './pages/PartDetail.jsx'
 import BuyerCabinet from './pages/BuyerCabinet.jsx'
+import Chats from './pages/Chats.jsx'
+import ChatView from './pages/ChatView.jsx'
 import { CartProvider, useCart } from './cart.jsx'
 import AuthPage from './pages/Auth.jsx'
 import { readSession, clearSession, ROLE_LABELS } from './auth.jsx'
@@ -41,6 +43,7 @@ function HeaderNav() {
         <NavLink to="/cabinet">Кабинет</NavLink>
         <NavLink to="/buyer">Покупателю</NavLink>
         <NavLink to="/deal">Сделка</NavLink>
+        <NavLink to="/chats">Сообщения</NavLink>
         <NavLink to="/buyer" className="pd-cart-link">Корзина ({count})</NavLink>
         {session ? (
           <span className="pd-f8-auth">
@@ -71,6 +74,8 @@ export default function App() {
           <Route path="/buyer" element={<BuyerCabinet />} />
           <Route path="/deal" element={<Deal />} />
           <Route path="/deal/:id" element={<Deal />} />
+          <Route path="/chats" element={<Chats />} />
+          <Route path="/chat/:id" element={<ChatView />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />
         </Routes>

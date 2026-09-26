@@ -1397,3 +1397,98 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   opacity: 1;
 }
 /* Keep the existing layer-btn/flat-hotspot styles untouched for flat parts */
+
+/* ============ BE-3: chat (dialogs/messages/offers) ============ */
+.pd-chat-list-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.pd-chat-dialogs { list-style: none; padding: 0; margin: 0; }
+.pd-chat-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: #fff;
+  border: 1px solid #e3e6ea;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.pd-chat-row:hover { border-color: #3b82f6; }
+.pd-chat-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pd-chat-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6b7280;
+  font-size: 13px;
+}
+.pd-chat-row-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.pd-chat-time { font-size: 12px; }
+.pd-chat-unread {
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.pd-chat-view { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; height: calc(100vh - 140px); min-height: 420px; }
+.pd-chat-view-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  flex: 0 0 auto;
+}
+.pd-chat-thread {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  background: #f4f6f9;
+  border: 1px solid #e3e6ea;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pd-chat-msg { max-width: 78%; display: flex; flex-direction: column; gap: 2px; }
+.pd-chat-msg.mine { align-self: flex-end; align-items: flex-end; }
+.pd-chat-msg.theirs { align-self: flex-start; align-items: flex-start; }
+.pd-chat-bubble {
+  background: #fff;
+  border: 1px solid #e3e6ea;
+  padding: 8px 12px;
+  border-radius: 12px;
+  word-break: break-word;
+}
+.pd-chat-msg.mine .pd-chat-bubble { background: #eaf2ff; border-color: #cfe0ff; }
+.pd-chat-time { font-size: 11px; color: #9aa3ad; }
+.pd-chat-empty { text-align: center; }
+
+.pd-chat-offer { display: flex; flex-direction: column; gap: 6px; }
+.pd-chat-offer-price { font-weight: 700; }
+.pd-chat-offer-body { color: #6b7280; font-size: 13px; }
+.pd-chat-offer-actions { display: flex; gap: 6px; margin-top: 2px; }
+.pd-chat-attachment a { color: #3b82f6; }
+
+.pd-chat-composer { flex: 0 0 auto; padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.pd-chat-composer-offer { display: flex; gap: 8px; align-items: center; }
+.pd-chat-composer-row { display: flex; gap: 8px; align-items: center; }
+.pd-chat-composer-input { flex: 1 1 auto; }
+
+@media (max-width: 560px) {
+  .pd-chat-msg { max-width: 92%; }
+  .pd-chat-view { height: calc(100vh - 120px); }
+  .pd-chat-composer { position: sticky; bottom: 0; background: #fff; padding: 8px; border-top: 1px solid #e3e6ea; }
+}

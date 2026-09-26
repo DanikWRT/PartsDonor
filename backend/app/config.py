@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-insecure-jwt-secret-change-me"
     jwt_expire_minutes: int = 60 * 24
 
+    # BE-1: каталог хранения загруженных фото (storage) + базовый URL отдачи статики
+    upload_dir: str = "./storage/uploads"
+    upload_url_prefix: str = "/uploads"
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="PARTSDONOR_", extra="ignore")
 
 

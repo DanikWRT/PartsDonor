@@ -66,9 +66,10 @@ function HeaderNav({ onCartOpen }) {
 function AppInner() {
   const { pathname } = useLocation()
   const [cartOpen, setCartOpen] = React.useState(false)
-  const isShowcase = pathname === '/'
+  const isShowcase = pathname === '/' || pathname.startsWith('/storefront/')
+  const isStorefront = pathname.startsWith('/storefront/')
   return (
-    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}`}>
+    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}`}>
       <HeaderNav onCartOpen={() => setCartOpen(true)} />
       <main className="pd-main">
         <Routes>

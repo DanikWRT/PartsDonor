@@ -154,6 +154,23 @@ app = FastAPI(title="PartsDonor API", version="0.2.0")
 router = APIRouter()
 
 
+# RU-метки для share-постов (SCR-3). Ключи совпадают со строковыми значениями
+# enum'ов ListingStatus / PartCondition (models.py): они наследуют str, поэтому
+# PartCondition.working == "working" и хэшируется как строка — подходят оба ключа.
+_STATUS_LABEL = {
+    "active": "в наличии",
+    "negotiated": "в переговорах",
+    "sold": "продано",
+    "hidden": "скрыто",
+}
+_COND_LABEL = {
+    "working": "рабочая",
+    "for_parts": "на запчасти",
+    "untested": "не проверена",
+    "no_guarantee": "без гарантии",
+}
+
+
 async def _part_info(part_id):
     if not part_id:
         return (None, None)
@@ -2628,32 +2645,69 @@ async def share_text(payload: ShareTextIn, db: AsyncSession = Depends(get_db)) -
         verified_tag = " ✓ верифицирован" if seller_company.verified else ""
         seller_line = f"🏪 {seller_company.name}{verified_tag}"
 
-    body_lines: list[str] = []
-    if seller_line:
-        body_lines.append(seller_line)
+    channel = (payload.channel or "tg").strip().lower()
+    is_tg = channel == "tg"
 
-    for listing, found in resolved:
+    # --- собрать строки по каждому листингу ---
+    item_lines: list[list[str]] = []
+    for i, (listing, found) in enumerate(resolved, start=1):
         if not found or listing is None:
-            body_lines.append("- (нет в каталоге)")
+            item_lines.append([f"{i:02d}. (нет в каталоге)"])
             continue
         cond = _COND_LABEL.get(listing.condition, str(listing.condition.value))
         stat = _STATUS_LABEL.get(listing.status, str(listing.status.value))
         price = f"{listing.price_rub:g}"
-        if payload.include_links:
-            body_lines.append(
-                f"- {listing.title} — {price} ₽ ({cond}, {stat}): {base}/part/{listing.id}"
+        link = f"{base}/part/{listing.id}" if payload.include_links else ""
+        if is_tg:
+            mark = {"active": "✅", "negotiated": "⏳", "sold": "❌", "hidden": "⚪"}.get(
+                listing.status.value, "•"
             )
+            lines = [f"{i:02d}. {mark} <b>{listing.title}</b>"]
+            lines.append(f"    💰 <b>{price} ₽</b> · {cond} · {stat}")
+            if link:
+                lines.append(f"    🔖 {link}")
         else:
-            body_lines.append(f"- {listing.title} — {price} ₽ ({cond}, {stat})")
+            lines = [f"{i:02d}. {listing.title}"]
+            lines.append(f"   💰 {price} ₽ · {cond} · {stat}")
+            if link:
+                lines.append(f"   🔖 {link}")
+        item_lines.append(lines)
+
+    # --- собрать пост ---
+    parts: list[str] = []
+    if seller_line:
+        parts.append(seller_line)
+
+    if is_tg:
+        parts.append("Отличные запчасти от проверенного продавца:")
+    else:
+        parts.append("Запчасти от продавца:")
+
+    parts.append(
+        "\n\n".join("\n".join(lines) for lines in item_lines)
+    )
 
     if payload.note and payload.note.strip():
-        body_lines.append("")
-        body_lines.append(payload.note.strip())
+        parts.append(payload.note.strip())
 
-    body_lines.append("")
-    body_lines.append("Отправлено через PartsHub")
+    if is_tg:
+        blocks = [
+            "━━━━━━━━━━━━━━━━━━━━",
+            "🌐 <b>О площадке PartsHub</b>",
+            "PartsHub — маркетплейс донорских запчастей и оригинальных б/у "
+            "деталей с прослеживаемым происхождением.",
+            f"👉 {base}",
+        ]
+    else:
+        blocks = [
+            "---- О площадке PartsHub ----",
+            "PartsHub — маркетплейс донорских запчастей и оригинальных б/у деталей.",
+            f"Ссылка: {base}",
+        ]
+    parts.append("\n".join(blocks))
+    parts.append("Отправлено через PartsHub")
 
-    return ShareTextOut(text="\n".join(body_lines), preview=True)
+    return ShareTextOut(text="\n\n".join(parts), preview=True)
 
 
 app.include_router(router)

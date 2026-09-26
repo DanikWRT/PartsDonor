@@ -11,7 +11,7 @@ export default defineConfig({
     // поэтому strip-им '/api' при пробросе (rewrite).
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8001',
+        target: 'http://127.0.0.1:' + (process.env.BE_PORT || 8001),
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },

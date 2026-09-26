@@ -765,6 +765,7 @@ class ShareTextIn(BaseModel):
     listing_ids: list[uuid.UUID]
     note: str | None = None
     include_links: bool = True
+    channel: str = "tg"  # tg | max
 
 
 class ShareTextOut(BaseModel):

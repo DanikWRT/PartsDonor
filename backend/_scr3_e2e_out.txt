@@ -1,0 +1,21 @@
+[scr3] base=http://127.0.0.1:8011
+[scr3] backend pid=388417
+[scr3] backend up
+[scr3] email=scr3_388410_1790435381@gmail.com
+[scr3] registered seller
+[scr3] login ok company_id=8b095aff-9080-4ee7-90a1-11f6bb296c81
+[scr3] slug=скр3-витрина-тест-388410
+[scr3] created listings be96d1c5-4109-445f-b7f7-825d653b6600 6daf7c56-6d56-42ac-ad48-c09c38a656a1
+[scr3] GET /storefront/скр3-витрина-тест-388410 -> http 200
+[scr3] storefront 200 with items (titles present)
+[scr3] POST /share/text tg -> http 200
+[scr3] POST /share/text max -> http 200
+
+----- POST /share/text channel=tg RAW TEXT -----
+{"text":"🏪 Скр3 Витрина ТЕСТ 388410\n\nОтличные запчасти от проверенного продавца:\n\n01. ✅ <b>Дисплей скр3 20485</b>\n    💰 <b>1999.5 ₽</b> · рабочая · в наличии\n    🔖 https://partshub.local/part/be96d1c5-4109-445f-b7f7-825d653b6600\n\n02. ✅ <b>Аккумулятор скр3 8475</b>\n    💰 <b>800 ₽</b> · не проверена · в наличии\n    🔖 https://partshub.local/part/6daf7c56-6d56-42ac-ad48-c09c38a656a1\n\n━━━━━━━━━━━━━━━━━━━━\n🌐 <b>О площадке PartsHub</b>\nPartsHub — маркетплейс донорских запчастей и оригинальных б/у деталей с прослеживаемым происхождением.\n👉 https://partshub.local\n\nОтправлено через PartsHub","preview":true}
+
+----- POST /share/text channel=max RAW TEXT -----
+{"text":"🏪 Скр3 Витрина ТЕСТ 388410\n\nЗапчасти от продавца:\n\n01. Дисплей скр3 20485\n   💰 1999.5 ₽ · рабочая · в наличии\n   🔖 https://partshub.local/part/be96d1c5-4109-445f-b7f7-825d653b6600\n\n02. Аккумулятор скр3 8475\n   💰 800 ₽ · не проверена · в наличии\n   🔖 https://partshub.local/part/6daf7c56-6d56-42ac-ad48-c09c38a656a1\n\n---- О площадке PartsHub ----\nPartsHub — маркетплейс донорских запчастей и оригинальных б/у деталей.\nСсылка: https://partshub.local\n\nОтправлено через PartsHub","preview":true}
+
+==== SCR-3 E2E RESULT: PASS (0 failures) ====
+[scr3] stopped throwaway server pid=388417

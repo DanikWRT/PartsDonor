@@ -2135,3 +2135,307 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   .donors-grid { grid-template-columns: 1fr; }
   .parts-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 }
+
+/* ==========================================================================
+   SCR-3 dark storefront (reference 06) — scoped to '/storefront/:slug' via
+   .pd-app-storefront (added in App.jsx alongside .pd-app-showcase). Everything
+   here is prefixed `sf-` and scoped so it never leaks onto light pages or the
+   '/' showcase.
+   ========================================================================== */
+.pd-app-storefront .sf-page { position: relative; z-index: 1; }
+.pd-app-storefront .sf-container {
+  position: relative; z-index: 1;
+  max-width: 1500px; margin: 0 auto;
+  padding: 30px 32px 140px;
+}
+.pd-app-storefront .sf-hint {
+  color: var(--muted); font-size: 14px; padding: 30px; text-align: center;
+}
+
+/* ------------------------------ SELLER HERO ------------------------------ */
+.pd-app-storefront .sf-hero {
+  display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center;
+  padding: 24px 28px;
+  background: linear-gradient(135deg, rgba(79,163,255,.08), rgba(124,247,208,.03));
+  border: 1px solid rgba(79,163,255,.2); border-radius: 22px;
+  margin-bottom: 24px; position: relative; overflow: hidden;
+  backdrop-filter: blur(20px);
+}
+.pd-app-storefront .sf-hero::before {
+  content: ''; position: absolute; top: -50%; right: -10%;
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(79,163,255,.25), transparent 70%);
+  pointer-events: none;
+}
+.pd-app-storefront .sf-hero-left {
+  display: flex; align-items: center; gap: 20px; position: relative; z-index: 1;
+}
+.pd-app-storefront .sf-logo-big {
+  width: 72px; height: 72px; border-radius: 22px; flex-shrink: 0;
+  background: linear-gradient(135deg, #4fa3ff, #7cf7d0);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 30px; color: #050608;
+  box-shadow: 0 12px 32px rgba(79,163,255,.4);
+}
+.pd-app-storefront .sf-info h1.sf-name {
+  font-size: 24px; font-weight: 800; letter-spacing: -.6px; margin: 0 0 6px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.pd-app-storefront .sf-meta {
+  display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-2);
+}
+.pd-app-storefront .sf-meta-item { display: inline-flex; align-items: center; gap: 5px; }
+.pd-app-storefront .sf-meta-item b { color: var(--text); }
+.pd-app-storefront .sf-star { color: var(--yellow); }
+.pd-app-storefront .sf-actions {
+  display: flex; gap: 10px; position: relative; z-index: 1; flex-wrap: wrap;
+}
+
+/* ------------------------------ STATS ------------------------------ */
+.pd-app-storefront .sf-stats-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px;
+  margin-bottom: 24px;
+}
+.pd-app-storefront .sf-stat-card {
+  padding: 16px;
+  background: linear-gradient(160deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  border: 1px solid var(--stroke); border-radius: 16px; backdrop-filter: blur(20px);
+}
+.pd-app-storefront .sf-stat-label {
+  font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px;
+  font-weight: 600; margin-bottom: 6px;
+}
+.pd-app-storefront .sf-stat-value {
+  font-size: 24px; font-weight: 800; letter-spacing: -1px; line-height: 1.1;
+  background: linear-gradient(135deg, #fff, #a4adc2);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.pd-app-storefront .sf-stat-value.sf-accent {
+  background: linear-gradient(135deg, #4fa3ff, #7cf7d0);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.pd-app-storefront .sf-stat-value.sf-green {
+  background: linear-gradient(135deg, #22c55e, #7cf7d0);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+
+/* ------------------------------ TOOLBAR ------------------------------ */
+.pd-app-storefront .sf-toolbar {
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  padding: 14px 16px;
+  background: linear-gradient(160deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  border: 1px solid var(--stroke); border-radius: 16px; margin-bottom: 20px;
+  backdrop-filter: blur(20px);
+}
+.pd-app-storefront .sf-search {
+  flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px; background: rgba(255,255,255,.03);
+  border: 1px solid var(--stroke); border-radius: 10px;
+}
+.pd-app-storefront .sf-search:focus-within { border-color: var(--accent); }
+.pd-app-storefront .sf-search input {
+  flex: 1; background: none; border: none; color: var(--text); font-size: 13px; font-family: inherit; outline: none;
+}
+.pd-app-storefront .sf-search input::placeholder { color: var(--muted); }
+.pd-app-storefront .sf-filter-tabs {
+  display: flex; gap: 4px; padding: 3px; flex-wrap: wrap;
+  background: var(--glass); border: 1px solid var(--stroke); border-radius: 10px;
+}
+.pd-app-storefront .sf-ftab {
+  padding: 7px 12px; background: transparent; border: none; color: var(--text-2);
+  font-size: 12px; font-weight: 500; cursor: pointer; border-radius: 8px; transition: all .2s;
+  font-family: inherit; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;
+}
+.pd-app-storefront .sf-ftab:hover { color: var(--text); }
+.pd-app-storefront .sf-ftab.active { background: rgba(255,255,255,.08); color: var(--text); }
+.pd-app-storefront .sf-ftab .cnt {
+  font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 6px;
+  background: rgba(255,255,255,.08); color: var(--muted);
+}
+.pd-app-storefront .sf-ftab.active .cnt { background: rgba(79,163,255,.25); color: #4fa3ff; }
+
+/* ------------------------------ PRODUCTS GRID ------------------------------ */
+.pd-app-storefront .sf-products-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;
+}
+.pd-app-storefront .sf-product-card {
+  position: relative; cursor: pointer;
+  background: linear-gradient(160deg, rgba(255,255,255,.055), rgba(255,255,255,.015));
+  border: 1px solid var(--stroke); border-radius: 18px; padding: 14px;
+  transition: all .3s cubic-bezier(.2,.8,.2,1); backdrop-filter: blur(20px);
+  display: flex; flex-direction: column; gap: 12px; overflow: hidden;
+}
+.pd-app-storefront .sf-product-card:hover {
+  transform: translateY(-3px); border-color: rgba(79,163,255,.35);
+  box-shadow: 0 20px 45px rgba(0,0,0,.5), 0 0 40px rgba(79,163,255,.06);
+}
+.pd-app-storefront .sf-product-card.selected {
+  border-color: rgba(79,163,255,.6); box-shadow: 0 0 0 1px rgba(79,163,255,.4), 0 20px 45px rgba(0,0,0,.5);
+}
+.pd-app-storefront .sf-prod-select {
+  position: absolute; top: 12px; left: 12px; z-index: 3;
+  width: 22px; height: 22px; border-radius: 7px;
+  background: rgba(5,6,8,.7); border: 1.5px solid rgba(255,255,255,.25);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: all .2s; backdrop-filter: blur(10px);
+}
+.pd-app-storefront .sf-prod-select:hover { border-color: var(--accent); }
+.pd-app-storefront .sf-prod-select.checked {
+  background: linear-gradient(135deg, #4fa3ff, #7cf7d0); border-color: transparent;
+}
+.pd-app-storefront .sf-prod-select.checked::after {
+  content: '✓'; color: #050608; font-weight: 900; font-size: 13px;
+}
+.pd-app-storefront .sf-prod-status { z-index: 2; display: inline-flex; align-items: center; }
+.pd-app-storefront .sf-prod-status-chip {
+  position: absolute; top: 8px; right: 8px;
+  padding: 3px 9px; border-radius: 9px; font-size: 9.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .4px; backdrop-filter: blur(12px);
+}
+.pd-app-storefront .sf-prod-status-chip span {
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.pd-app-storefront .sf-prod-status-chip span::before {
+  content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+}
+.pd-app-storefront .sf-status-active { background: rgba(34,197,94,.18); color: var(--green); border: 1px solid rgba(34,197,94,.35); }
+.pd-app-storefront .sf-status-negotiated { background: rgba(251,191,36,.18); color: var(--yellow); border: 1px solid rgba(251,191,36,.35); }
+.pd-app-storefront .sf-status-sold { background: rgba(239,68,68,.18); color: var(--red); border: 1px solid rgba(239,68,68,.35); }
+.pd-app-storefront .sf-status-hidden { background: rgba(148,163,184,.18); color: var(--muted); border: 1px solid rgba(148,163,184,.35); }
+.pd-app-storefront .sf-prod-preview {
+  position: relative; height: 150px; border-radius: 13px;
+  background: radial-gradient(circle at 50% 25%, rgba(120,160,220,.09), transparent 60%),
+    linear-gradient(180deg, #10151f 0%, #080b12 100%);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; border: 1px solid rgba(255,255,255,.05);
+}
+.pd-app-storefront .sf-prod-preview::before {
+  content: ''; position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(120,160,220,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120,160,220,.04) 1px, transparent 1px);
+  background-size: 12px 12px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+}
+.pd-app-storefront .sf-prod-emoji {
+  font-size: 52px; position: relative; z-index: 1;
+  filter: drop-shadow(0 8px 16px rgba(0,0,0,.5));
+  transition: transform .5s cubic-bezier(.2,.8,.2,1);
+}
+.pd-app-storefront .sf-product-card:hover .sf-prod-emoji { transform: scale(1.08) rotate(-1.5deg); }
+.pd-app-storefront .sf-prod-name { font-size: 13.5px; font-weight: 700; letter-spacing: -.2px; line-height: 1.3; }
+.pd-app-storefront .sf-prod-meta { font-size: 11px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px; }
+.pd-app-storefront .sf-prod-meta .dot { opacity: .4; }
+.pd-app-storefront .sf-prod-foot {
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 8px;
+  padding-top: 10px; border-top: 1px solid rgba(255,255,255,.05); margin-top: auto;
+}
+.pd-app-storefront .sf-prod-price {
+  font-size: 17px; font-weight: 800; letter-spacing: -.5px; line-height: 1;
+  background: linear-gradient(135deg, #fff, #4fa3ff);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.pd-app-storefront .sf-prod-stock {
+  font-size: 10.5px; color: var(--text-2); padding: 3px 8px; border-radius: 8px;
+  background: rgba(255,255,255,.05); border: 1px solid var(--stroke); font-weight: 600; white-space: nowrap;
+}
+.pd-app-storefront .sf-btn-tg { background: rgba(41,182,246,.15); color: #29b6f6; border-color: rgba(41,182,246,.35); }
+.pd-app-storefront .sf-btn-tg:hover { background: rgba(41,182,246,.25); }
+.pd-app-storefront .sf-btn-max { background: rgba(124,247,208,.15); color: #7cf7d0; border-color: rgba(124,247,208,.35); }
+.pd-app-storefront .sf-btn-max:hover { background: rgba(124,247,208,.25); }
+
+/* ------------------------------ STICKY ACTION BAR ------------------------------ */
+.pd-app-storefront .sf-action-bar {
+  position: fixed; bottom: 20px; left: 50%; z-index: 90;
+  transform: translateX(-50%) translateY(120px);
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px 10px 20px;
+  background: rgba(11,13,19,.92); border: 1px solid rgba(79,163,255,.35); border-radius: 16px;
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 20px 60px rgba(0,0,0,.8), 0 0 0 1px rgba(79,163,255,.15);
+  transition: transform .3s cubic-bezier(.2,.8,.2,1);
+  max-width: calc(100% - 40px); flex-wrap: wrap;
+}
+.pd-app-storefront .sf-action-bar.show { transform: translateX(-50%) translateY(0); }
+.pd-app-storefront .sf-ab-info { font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
+.pd-app-storefront .sf-ab-info b { color: #7cf7d0; font-weight: 700; }
+.pd-app-storefront .sf-ab-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ------------------------------ SHARE MODAL ------------------------------ */
+.pd-app-storefront .sf-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 200;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  backdrop-filter: blur(8px);
+}
+.pd-app-storefront .sf-modal {
+  background: linear-gradient(160deg, #0d1018, #050608); border: 1px solid var(--stroke);
+  border-radius: 22px; padding: 24px; max-width: 720px; width: 100%;
+  max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 40px 80px rgba(0,0,0,.85);
+  animation: sfModalIn .3s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes sfModalIn {
+  from { opacity: 0; transform: scale(.96) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.pd-app-storefront .sf-modal-head {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; gap: 12px;
+}
+.pd-app-storefront .sf-modal-head h2 {
+  font-size: 18px; font-weight: 800; letter-spacing: -.4px; margin: 0;
+  display: flex; align-items: center; gap: 10px;
+}
+.pd-app-storefront .sf-modal-head h2 .ico {
+  width: 34px; height: 34px; border-radius: 10px;
+  background: linear-gradient(135deg, #4fa3ff, #7cf7d0); color: #050608;
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
+}
+.pd-app-storefront .sf-close-btn {
+  background: none; border: none; color: var(--muted); font-size: 26px; cursor: pointer; line-height: 1;
+}
+.pd-app-storefront .sf-close-btn:hover { color: var(--text); }
+.pd-app-storefront .sf-channel-tabs {
+  display: flex; gap: 4px; padding: 3px; background: var(--glass);
+  border: 1px solid var(--stroke); border-radius: 12px; margin-bottom: 16px;
+}
+.pd-app-storefront .sf-channel-tab {
+  flex: 1; padding: 10px 14px; background: transparent; border: none;
+  color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer;
+  border-radius: 9px; transition: all .2s; font-family: inherit;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.pd-app-storefront .sf-channel-tab:hover { color: var(--text); }
+.pd-app-storefront .sf-channel-tab.active { background: rgba(255,255,255,.08); color: var(--text); }
+.pd-app-storefront .sf-channel-tab[data-ch="tg"].active { background: rgba(41,182,246,.18); color: #29b6f6; }
+.pd-app-storefront .sf-channel-tab[data-ch="max"].active { background: rgba(124,247,208,.18); color: #7cf7d0; }
+.pd-app-storefront .sf-post-preview {
+  padding: 18px; background: rgba(255,255,255,.03); border: 1px solid var(--stroke);
+  border-radius: 14px; font-family: 'SF Mono', 'Courier New', monospace;
+  font-size: 12.5px; line-height: 1.7; color: var(--text-2); white-space: pre-wrap;
+  word-wrap: break-word; max-height: 400px; overflow-y: auto; margin-bottom: 16px;
+}
+.pd-app-storefront .sf-loading { color: var(--muted); }
+.pd-app-storefront .sf-share-error { color: var(--red); font-size: 12px; margin-bottom: 12px; }
+.pd-app-storefront .sf-modal-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.pd-app-storefront .sf-modal-actions .btn { flex: 1; justify-content: center; min-width: 140px; }
+
+/* ------------------------------ EMPTY / MISC ------------------------------ */
+.pd-app-storefront .sf-empty-state {
+  grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--muted); font-size: 13.5px;
+}
+.pd-app-storefront .sf-empty-state .emoji { font-size: 48px; margin-bottom: 14px; display: block; opacity: .5; }
+
+/* ------------------------------ RESPONSIVE ------------------------------ */
+@media (max-width: 900px) {
+  .pd-app-storefront .sf-container { padding: 20px 16px 140px; }
+  .pd-app-storefront .sf-hero { grid-template-columns: 1fr; padding: 20px; }
+  .pd-app-storefront .sf-actions { width: 100%; }
+  .pd-app-storefront .sf-actions .btn { flex: 1; justify-content: center; }
+  .pd-app-storefront .sf-products-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .pd-app-storefront .sf-action-bar { padding: 10px 14px; }
+  .pd-app-storefront .sf-ab-info { width: 100%; text-align: center; }
+  .pd-app-storefront .sf-ab-actions { width: 100%; }
+  .pd-app-storefront .sf-ab-actions .btn { flex: 1; justify-content: center; padding: 10px; font-size: 12px; }
+}

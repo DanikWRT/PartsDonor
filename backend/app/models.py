@@ -623,3 +623,34 @@ class KbArticle(Base):
     )
 
     author: Mapped[User | None] = relationship()
+
+
+# --- BE-5: master profile ---
+
+
+class MasterProfile(Base):
+    """Профиль мастера (BE-5): слоган, город, опыт, услуги, оборудование,
+    портфолио, B2B-опции и контакты мастерской. Один профиль на компанию.
+    """
+
+    __tablename__ = "master_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id"), unique=True, index=True
+    )
+    tagline: Mapped[str] = mapped_column(String(255), default="")  # слоган мастера
+    city: Mapped[str] = mapped_column(String(120), default="")
+    since: Mapped[int] = mapped_column(Integer, default=0)  # год начала работы
+    experience: Mapped[list] = mapped_column(JSON, default=list)  # [{year, title, desc}] таймлайн
+    services: Mapped[list] = mapped_column(JSON, default=list)  # [str] услуги/навыки
+    arsenal: Mapped[list] = mapped_column(JSON, default=list)  # [{name, note}] оборудование
+    portfolio: Mapped[list] = mapped_column(JSON, default=list)  # [{title, desc}] работы
+    b2b: Mapped[list] = mapped_column(JSON, default=list)  # [str] B2B-опции (опт/поставки)
+    contacts: Mapped[list] = mapped_column(JSON, default=list)  # [{type, value}] phone/telegram/email
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    company: Mapped[Company | None] = relationship()

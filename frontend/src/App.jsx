@@ -12,6 +12,7 @@ import Chats from './pages/Chats.jsx'
 import ChatView from './pages/ChatView.jsx'
 import Kb from './pages/Kb.jsx'
 import Storefront from './pages/Storefront.jsx'
+import DonorWizard from './pages/DonorWizard.jsx'
 import { CartProvider, useCart } from './cart.jsx'
 import CartDrawer from './components/CartDrawer.jsx'
 import AuthPage from './pages/Auth.jsx'
@@ -49,6 +50,7 @@ function HeaderNav({ onCartOpen }) {
         <NavLink to="/deal">Сделка</NavLink>
         <NavLink to="/chats">Сообщения</NavLink>
         <NavLink to="/storefront">Витрина</NavLink>
+        <NavLink to="/donor/new">Добавить донора</NavLink>
         <button type="button" className="cart-btn" onClick={onCartOpen} aria-label="Корзина">🛒 {count}</button>
         {session ? (
           <span className="pd-f8-auth">
@@ -68,8 +70,9 @@ function AppInner() {
   const [cartOpen, setCartOpen] = React.useState(false)
   const isShowcase = pathname === '/' || pathname.startsWith('/storefront/')
   const isStorefront = pathname.startsWith('/storefront/')
+  const isWizard = pathname.startsWith('/donor/new')
   return (
-    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}`}>
+    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}${isWizard ? ' pd-app-wizard' : ''}`}>
       <HeaderNav onCartOpen={() => setCartOpen(true)} />
       <main className="pd-main">
         <Routes>
@@ -88,6 +91,7 @@ function AppInner() {
           <Route path="/kb/:id" element={<Kb />} />
           <Route path="/storefront" element={<Storefront />} />
           <Route path="/storefront/:slug" element={<Storefront />} />
+          <Route path="/donor/new" element={<DonorWizard />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />
         </Routes>

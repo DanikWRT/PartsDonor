@@ -581,3 +581,45 @@ class Offer(Base):
     sender: Mapped[User] = relationship()
     dialog: Mapped[Dialog] = relationship()
     message: Mapped["Message | None"] = relationship()
+
+
+# --- BE-4: knowledge base (kb_articles/categories) ---
+
+
+class KbCategory(Base):
+    """Рубрика базы знаний (схемы/разборка/совместимость/лайфхаки/ремонт)."""
+
+    __tablename__ = "kb_categories"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(120))
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class KbArticle(Base):
+    """Статья базы знаний: рубрика (slug категории), текст, автор, рейтинг/просмотры."""
+
+    __tablename__ = "kb_articles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    cat: Mapped[str] = mapped_column(String(64), index=True)  # rubric slug — match kb_categories.slug
+    title: Mapped[str] = mapped_column(String(200))
+    excerpt: Mapped[str] = mapped_column(Text, default="")
+    body: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(String(128), default="")  # phone model / "" for general
+    tags: Mapped[str] = mapped_column(String(255), default="")   # comma-separated
+    author_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    rating: Mapped[float] = mapped_column(Float, default=0.0)
+    votes: Mapped[int] = mapped_column(Integer, default=0)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    author: Mapped[User | None] = relationship()

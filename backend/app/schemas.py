@@ -467,6 +467,73 @@ class DonorSchema(BaseModel):
     components: list[DonorComponent]
 
 
+# --- База знаний (BE-4) ---
+
+
+class KbCategoryIn(BaseModel):
+    slug: str
+    name: str
+    sort: int = 0
+
+
+class KbCategoryOut(BaseModel):
+    id: uuid.UUID
+    slug: str
+    name: str
+    sort: int
+    article_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class KbArticleIn(BaseModel):
+    cat: str
+    title: str
+    excerpt: str = ""
+    body: str = ""
+    model: str = ""
+    tags: str = ""
+    author_id: uuid.UUID | None = None
+    priority: int = 0
+    rating: float = 0.0
+    votes: int = 0
+
+
+class KbArticleOut(BaseModel):
+    id: uuid.UUID
+    cat: str
+    title: str
+    excerpt: str
+    body: str
+    model: str
+    tags: str
+    author_id: uuid.UUID | None
+    priority: int
+    rating: float
+    votes: int
+    views: int
+    created_at: datetime
+    updated_at: datetime
+    author_name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class KbVoteIn(BaseModel):
+    rating: int = Field(ge=1, le=5, default=5)
+    delta: int = 1  # +1/-1
+
+
+class KbAuthorOut(BaseModel):
+    author_id: uuid.UUID | None
+    author_name: str | None = None
+    article_count: int = 0
+    total_views: int = 0
+    total_rating: float = 0.0
+
+    model_config = {"from_attributes": True}
+
+
 # --- Прочее ---
 
 

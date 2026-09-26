@@ -1,5 +1,5 @@
 import React from 'react'
-import { Routes, Route, NavLink, useNavigate } from 'react-router-dom'
+import { Routes, Route, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import DonorView from './pages/DonorView.jsx'
 import DonorLots from './pages/DonorLots.jsx'
 import DonorLot from './pages/DonorLot.jsx'
@@ -13,10 +13,11 @@ import ChatView from './pages/ChatView.jsx'
 import Kb from './pages/Kb.jsx'
 import Storefront from './pages/Storefront.jsx'
 import { CartProvider, useCart } from './cart.jsx'
+import CartDrawer from './components/CartDrawer.jsx'
 import AuthPage from './pages/Auth.jsx'
 import { readSession, clearSession, ROLE_LABELS } from './auth.jsx'
 
-function HeaderNav() {
+function HeaderNav({ onCartOpen }) {
   const { count } = useCart()
   const navigate = useNavigate()
   const [session, setSessionState] = React.useState(readSession())
@@ -48,7 +49,7 @@ function HeaderNav() {
         <NavLink to="/deal">Сделка</NavLink>
         <NavLink to="/chats">Сообщения</NavLink>
         <NavLink to="/storefront">Витрина</NavLink>
-        <NavLink to="/buyer" className="pd-cart-link">Корзина ({count})</NavLink>
+        <button type="button" className="cart-btn" onClick={onCartOpen} aria-label="Корзина">🛒 {count}</button>
         {session ? (
           <span className="pd-f8-auth">
             <span className="pd-f8-auth-user">{ROLE_LABELS[session.role] || session.role}: {session.email}</span>
@@ -62,11 +63,13 @@ function HeaderNav() {
   )
 }
 
-export default function App() {
+function AppInner() {
+  const { pathname } = useLocation()
+  const [cartOpen, setCartOpen] = React.useState(false)
+  const isShowcase = pathname === '/'
   return (
-    <CartProvider>
-      <div className="pd-app">
-      <HeaderNav />
+    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}`}>
+      <HeaderNav onCartOpen={() => setCartOpen(true)} />
       <main className="pd-main">
         <Routes>
           <Route path="/" element={<Catalog />} />
@@ -88,7 +91,15 @@ export default function App() {
           <Route path="/register" element={<AuthPage mode="register" />} />
         </Routes>
       </main>
-      </div>
+      <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
+    </div>
+  )
+}
+
+export default function App() {
+  return (
+    <CartProvider>
+      <AppInner />
     </CartProvider>
   )
 }

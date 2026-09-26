@@ -138,6 +138,13 @@ from app.schemas import (
     KbCategoryIn,
     KbCategoryOut,
     KbVoteIn,
+    # BE-6
+    StorefrontOut,
+    StorefrontCompany,
+    StorefrontMetrics,
+    StorefrontItem,
+    ShareTextIn,
+    ShareTextOut,
 )
 from app.yookassa_client import new_payment_id, yookassa
 
@@ -2519,6 +2526,135 @@ async def kb_article_vote(
     out = _kb_out(a, author_name)  # build BEFORE commit
     await db.commit()
     return out
+
+# ============================== STOREFRONT / SHARE (BE-6) ==============================
+
+
+@router.get("/storefront/{slug}", response_model=StorefrontOut)
+async def get_storefront(slug: str, db: AsyncSession = Depends(get_db)) -> StorefrontOut:
+    """Публичная витрина мастерской: метрики + рейтинг + список листингов."""
+    company = (
+        await db.execute(select(Company).where(Company.slug == slug))
+    ).scalar_one_or_none()
+    if company is None:
+        raise HTTPException(status_code=404, detail="Компания не найдена")
+
+    listings = list(
+        (
+            await db.execute(
+                select(Listing)
+                .where(Listing.seller_id == company.id)
+                .order_by(Listing.created_at.desc())
+            )
+        ).scalars().all()
+    )
+
+    available = sum(1 for l in listings if l.status == ListingStatus.active)
+    sold = sum(1 for l in listings if l.status == ListingStatus.sold)
+
+    reviews = (
+        await db.execute(select(Review).where(Review.seller_id == company.id))
+    ).scalars().all()
+    rating_distribution: dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for r in reviews:
+        rating_distribution[r.rating] = rating_distribution.get(r.rating, 0) + 1
+    review_count = len(reviews)
+    avg_rating = round(sum(r.rating for r in reviews) / review_count, 2) if review_count else 0.0
+
+    total_deals = (
+        (
+            await db.execute(
+                select(func.count(Deal.id)).where(Deal.seller_company_id == company.id)
+            )
+        ).scalar()
+        or 0
+    )
+
+    return StorefrontOut(
+        company=StorefrontCompany(
+            id=company.id,
+            name=company.name,
+            slug=company.slug,
+            verified=company.verified,
+            rating=company.rating if company.rating else avg_rating,
+        ),
+        metrics=StorefrontMetrics(
+            total_listings=len(listings),
+            available=available,
+            sold=sold,
+            avg_rating=avg_rating,
+            review_count=review_count,
+            total_deals=total_deals,
+        ),
+        rating_distribution=rating_distribution,
+        items=[
+            StorefrontItem(
+                id=l.id,
+                title=l.title,
+                price_rub=l.price_rub,
+                condition=l.condition,
+                status=l.status,
+                donor_lot_id=l.donor_lot_id,
+                created_at=l.created_at,
+            )
+            for l in listings
+        ],
+    )
+
+
+@router.post("/share/text", response_model=ShareTextOut)
+async def share_text(payload: ShareTextIn, db: AsyncSession = Depends(get_db)) -> ShareTextOut:
+    """Составить готовый текст-пост для Telegram/MAX из id листингов."""
+    if not payload.listing_ids:
+        raise HTTPException(status_code=400, detail="Не указаны listing_ids")
+
+    base = settings.frontend_base_url.rstrip("/")
+
+    # 1) продавец — берём компанию первого найденного листинга
+    seller_line = ""
+    resolved: list[tuple[Listing | None, bool]] = []
+    for lid in payload.listing_ids:
+        listing = await db.get(Listing, lid)
+        resolved.append((listing, listing is not None))
+
+    seller_company = None
+    for listing, _ in resolved:
+        if listing is not None:
+            seller_company = await db.get(Company, listing.seller_id)
+            if seller_company is not None:
+                break
+
+    if seller_company is not None:
+        verified_tag = " ✓ верифицирован" if seller_company.verified else ""
+        seller_line = f"🏪 {seller_company.name}{verified_tag}"
+
+    body_lines: list[str] = []
+    if seller_line:
+        body_lines.append(seller_line)
+
+    for listing, found in resolved:
+        if not found or listing is None:
+            body_lines.append("- (нет в каталоге)")
+            continue
+        cond = _COND_LABEL.get(listing.condition, str(listing.condition.value))
+        stat = _STATUS_LABEL.get(listing.status, str(listing.status.value))
+        price = f"{listing.price_rub:g}"
+        if payload.include_links:
+            body_lines.append(
+                f"- {listing.title} — {price} ₽ ({cond}, {stat}): {base}/part/{listing.id}"
+            )
+        else:
+            body_lines.append(f"- {listing.title} — {price} ₽ ({cond}, {stat})")
+
+    if payload.note and payload.note.strip():
+        body_lines.append("")
+        body_lines.append(payload.note.strip())
+
+    body_lines.append("")
+    body_lines.append("Отправлено через PartsHub")
+
+    return ShareTextOut(text="\n".join(body_lines), preview=True)
+
 
 app.include_router(router)
 app.include_router(auth_router)

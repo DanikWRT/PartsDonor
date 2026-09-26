@@ -11,6 +11,7 @@ import BuyerCabinet from './pages/BuyerCabinet.jsx'
 import Chats from './pages/Chats.jsx'
 import ChatView from './pages/ChatView.jsx'
 import Kb from './pages/Kb.jsx'
+import Storefront from './pages/Storefront.jsx'
 import { CartProvider, useCart } from './cart.jsx'
 import AuthPage from './pages/Auth.jsx'
 import { readSession, clearSession, ROLE_LABELS } from './auth.jsx'
@@ -46,6 +47,7 @@ function HeaderNav() {
         <NavLink to="/buyer">Покупателю</NavLink>
         <NavLink to="/deal">Сделка</NavLink>
         <NavLink to="/chats">Сообщения</NavLink>
+        <NavLink to="/storefront">Витрина</NavLink>
         <NavLink to="/buyer" className="pd-cart-link">Корзина ({count})</NavLink>
         {session ? (
           <span className="pd-f8-auth">
@@ -80,6 +82,8 @@ export default function App() {
           <Route path="/chat/:id" element={<ChatView />} />
           <Route path="/kb" element={<Kb />} />
           <Route path="/kb/:id" element={<Kb />} />
+          <Route path="/storefront" element={<Storefront />} />
+          <Route path="/storefront/:slug" element={<Storefront />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />
         </Routes>

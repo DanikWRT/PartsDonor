@@ -1,17 +1,76 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { authFetch, readSession } from '../auth.jsx'
+import { ChatList, avGrad, initialLetter, ROLE_TAG } from './Chats.jsx'
 
 const MONEY = (n) =>
   typeof n === 'number' && Number.isFinite(n) ? n.toLocaleString('ru-RU') + ' ₽' : ''
+
 const TIME = (iso) => {
   if (!iso) return ''
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 }
-const KINDS = { text: 'сообщение', offer: 'оффер', attachment: 'файл' }
 
-// Диалог: лента + композер. Поллинг каждые ~5с, пометка прочитанным при открытии.
+// Quick replies — clicking fills the composer.
+const QUICK = [
+  'Здравствуйте! Деталь ещё в наличии?',
+  'Какая цена?',
+  'Можете отправить фото?',
+  'Готов купить сегодня.',
+  'Спасибо!',
+]
+
+// Day-divider label
+const dayLabel = (iso) => {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const today = new Date()
+  const yest = new Date(); yest.setDate(yest.getDate() - 1)
+  if (d.toDateString() === today.toDateString()) return 'Сегодня'
+  if (d.toDateString() === yest.toDateString()) return 'Вчера'
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+// Pinned item: best-effort fetch of listing / donor-lot for icon+title+sub+price.
+function usePinned(dialog) {
+  const [pinned, setPinned] = useState(null)
+  const id = dialog?.id
+  useEffect(() => {
+    setPinned(null)
+    if (!dialog) return
+    const { listing_id, donor_lot_id } = dialog
+    let cancelled = false
+    const url = listing_id ? `/api/listings/${listing_id}` : donor_lot_id ? `/api/donor-lots/${donor_lot_id}` : null
+    if (!url) return
+    authFetch(url)
+      .then(async (r) => {
+        if (!r.ok) throw new Error()
+        const data = await r.json()
+        if (cancelled) return
+        setPinned({
+          title: data.title || data.part_name || 'Деталь',
+          sub: data.brand ? `${data.brand} ${data.model || ''}` : data.part_category || '',
+          price: MONEY(data.price_rub),
+          kind: listing_id ? 'listing' : 'donor-lot',
+        })
+      })
+      .catch(() => {
+        if (cancelled) return
+        // generic fallback — never crash
+        setPinned({
+          title: dialog.other_participant_name ? `Товар · ${dialog.other_participant_name}` : `Диалог ${String(id).slice(0, 8)}`,
+          sub: '',
+          price: '',
+          kind: listing_id ? 'listing' : 'donor-lot',
+        })
+      })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+  return pinned
+}
+
 export default function ChatView() {
   const { id } = useParams()
   const bottomRef = useRef(null)
@@ -24,8 +83,10 @@ export default function ChatView() {
   const [err, setErr] = useState(null)
   const [sending, setSending] = useState(false)
   const [kindMsg, setKindMsg] = useState(null)
+  const pinned = usePinned(dialog)
 
   const meId = readSession()?.user_id
+  const myRole = readSession()?.role
 
   const load = () => {
     authFetch(`/api/dialogs/${id}`)
@@ -43,7 +104,6 @@ export default function ChatView() {
 
   useEffect(() => {
     load()
-    // Помечаем прочитанным при открытии
     authFetch(`/api/dialogs/${id}/read`, { method: 'POST' }).catch(() => {})
     const t = setInterval(() => {
       authFetch(`/api/dialogs/${id}/read`, { method: 'POST' }).catch(() => {})
@@ -117,116 +177,182 @@ export default function ChatView() {
     }
   }
 
-  const fmt = (iso) => {
-    const d = new Date(iso)
-    return Number.isNaN(d.getTime())
-      ? ''
-      : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' ' + TIME(iso)
-  }
+  const otherRole = myRole === 'seller' ? 'buyer' : myRole === 'buyer' ? 'seller' : null
+
+  // group messages with day dividers
+  const grouped = useMemo(() => {
+    const out = []
+    for (const m of messages) {
+      const label = dayLabel(m.created_at)
+      if (out.length && out[out.length - 1].label === label) {
+        out[out.length - 1].items.push(m)
+      } else {
+        out.push({ label, items: [m] })
+      }
+    }
+    return out
+  }, [messages])
+
+  const otherName = dialog?.other_participant_name || 'Диалог'
 
   return (
-    <div className="pd-chat-view">
-      <div className="pd-chat-view-head">
-        <Link className="pd-back-link" to="/chats">←</Link>
-        <strong>{dialog?.other_participant_name || 'Диалог'}</strong>
-      </div>
+    <div className="ch-page">
+      <div className="bg-blueprint" aria-hidden="true" />
+      <div className="ch-panel ch-panel-chat">
+        <ChatList activeId={id} />
 
-      {loading ? (
-        <p className="pd-hint">Загрузка…</p>
-      ) : err ? (
-        <p className="pd-form-err">{err}</p>
-      ) : (
-        <>
-          <div className="pd-chat-thread">
-            {messages.length === 0 && (
-              <p className="pd-muted pd-chat-empty">Сообщений пока нет. Напишите первым.</p>
+        <section className="ch-view">
+          <header className="ch-view-head">
+            <Link to="/chats" className="ch-back" aria-label="Назад">←</Link>
+            <span className="ch-view-avatar" style={{ background: avGrad(otherName) }}>{initialLetter(otherName)}</span>
+            <span className="ch-view-id">
+              <strong className="ch-view-name">{otherName}</strong>
+              <span className="ch-view-status">Онлайн</span>
+            </span>
+            <span className="ch-view-actions" aria-hidden="true">
+              <button type="button">📞</button>
+              <button type="button">⋮</button>
+            </span>
+          </header>
+
+          {pinned && (
+            <div className="ch-pinned">
+              <span className="ch-pinned-ico">{pinned.kind === 'donor-lot' ? '🧩' : '🔧'}</span>
+              <span className="ch-pinned-info">
+                <strong className="ch-pinned-title">{pinned.title}</strong>
+                {pinned.sub && <span className="ch-pinned-sub">{pinned.sub}</span>}
+              </span>
+              {pinned.price && <span className="ch-pinned-price">{pinned.price}</span>}
+            </div>
+          )}
+
+          <div className="ch-thread">
+            {loading ? (
+              <p className="ch-hint">Загрузка…</p>
+            ) : err ? (
+              <p className="ch-err">{err}</p>
+            ) : (
+              <>
+                {messages.length === 0 && (
+                  <p className="ch-hint ch-empty">Сообщений пока нет. Напишите первым.</p>
+                )}
+                {grouped.map((g, gi) => (
+                  <div key={gi} className="ch-day">
+                    <div className="ch-day-divider"><span>{g.label}</span></div>
+                    {g.items.map((m) => {
+                      const mine = m.author_id === meId
+                      return (
+                        <div key={m.id} className={'ch-msg ' + (mine ? 'mine' : 'theirs')}>
+                          {!mine && (
+                            <span className="ch-msg-avatar" style={{ background: avGrad(otherName) }}>{initialLetter(otherName)}</span>
+                          )}
+                          <div className="ch-msg-col">
+                            {m.kind === 'offer' ? (
+                              <div className="ch-bubble ch-offer">
+                                <span className="ch-offer-label">💰 Коммерческое предложение</span>
+                                <span className="ch-offer-price">{MONEY(m.offer_price)}</span>
+                                {m.body && <span className="ch-offer-body">{m.body}</span>}
+                                {!mine && m.offer_status === 'pending' && (
+                                  <span className="ch-offer-actions">
+                                    <button type="button" className="ch-ok" onClick={() => resolveOffer(m, 'accept')}>Принять</button>
+                                    <button type="button" className="ch-no" onClick={() => resolveOffer(m, 'reject')}>Отклонить</button>
+                                  </span>
+                                )}
+                                {m.offer_status && m.offer_status !== 'pending' && (
+                                  <span className={`ch-offer-status ${m.offer_status}`}>
+                                    {m.offer_status === 'accepted' ? '✓ Принят' : m.offer_status === 'rejected' ? '✕ Отклонён' : m.offer_status}
+                                  </span>
+                                )}
+                              </div>
+                            ) : m.kind === 'attachment' ? (
+                              <div className="ch-bubble ch-attachment">
+                                <a href={m.attachment_url} target="_blank" rel="noreferrer">📎 {m.attachment_url || 'вложение'}</a>
+                              </div>
+                            ) : (
+                              <div className="ch-bubble">{m.body}</div>
+                            )}
+                            <span className="ch-msg-meta">
+                              {TIME(m.created_at)}
+                              {mine && (m.read ? <span className="ch-read">✓✓</span> : <span className="ch-read ch-read-sent">✓</span>)}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
+              </>
             )}
-            {messages.map((m) => {
-              const mine = m.author_id === meId
-              return (
-                <div key={m.id} className={'pd-chat-msg ' + (mine ? 'mine' : 'theirs')}>
-                  {m.kind === 'offer' ? (
-                    <div className="pd-chat-bubble pd-chat-offer">
-                      <span className="pd-chat-offer-price">💰 {MONEY(m.offer_price)}</span>
-                      {m.body && <span className="pd-chat-offer-body">{m.body}</span>}
-                      {!mine && m.offer_status === 'pending' && (
-                        <span className="pd-chat-offer-actions">
-                          <button type="button" className="pd-btn pd-btn-sm pd-btn-success" onClick={() => resolveOffer(m, 'accept')}>
-                            Принять
-                          </button>
-                          <button type="button" className="pd-btn pd-btn-sm pd-btn-danger" onClick={() => resolveOffer(m, 'reject')}>
-                            Отклонить
-                          </button>
-                        </span>
-                      )}
-                      {m.offer_status && m.offer_status !== 'pending' && (
-                        <span className={'pd-badge pd-status-' + m.offer_status}>{m.offer_status === 'accepted' ? 'принят' : m.offer_status === 'rejected' ? 'отклонён' : m.offer_status}</span>
-                      )}
-                    </div>
-                  ) : m.kind === 'attachment' ? (
-                    <div className="pd-chat-bubble pd-chat-attachment">
-                      <a href={m.attachment_url} target="_blank" rel="noreferrer">📎 {m.attachment_url || 'вложение'}</a>
-                    </div>
-                  ) : (
-                    <div className="pd-chat-bubble">{m.body}</div>
-                  )}
-                  <span className="pd-chat-time">
-                    {fmt(m.created_at)}
-                    {m.read && mine ? ' · прочитано' : ''}
-                  </span>
-                </div>
-              )
-            })}
             <div ref={bottomRef} />
           </div>
 
-          <form className="pd-chat-composer" onSubmit={send}>
+          <form className="ch-composer" onSubmit={send}>
             {kindMsg && (
-              <p className={kindMsg.type === 'ok' ? 'pd-form-ok' : 'pd-form-err'}>{kindMsg.text}</p>
+              <p className={kindMsg.type === 'ok' ? 'ch-ok-txt' : 'ch-err'}>{kindMsg.text}</p>
             )}
-            {offerMode ? (
-              <div className="pd-chat-composer-offer">
+            <div className="ch-quick">
+              {QUICK.map((q) => (
+                <button key={q} type="button" className="ch-qchip" onClick={() => { setBody(q); setOfferMode(false) }}>{q}</button>
+              ))}
+            </div>
+            {offerMode && (
+              <div className="ch-composer-offer">
                 <input
-                  className="pd-input pd-input-sm"
+                  className="ch-input"
                   type="number"
                   min="1"
                   step="1"
-                  placeholder="Цена, ₽"
+                  placeholder="Ваша цена, ₽"
                   value={offerPrice}
                   onChange={(e) => setOfferPrice(e.target.value)}
                 />
-                <button type="button" className="pd-btn pd-btn-sm pd-btn-ghost" onClick={() => { setOfferMode(false); setOfferPrice('') }}>
-                  Отмена
-                </button>
+                <button type="button" className="ch-cancel-offer" onClick={() => { setOfferMode(false); setOfferPrice('') }}>Отмена</button>
               </div>
-            ) : null}
-            <div className="pd-chat-composer-row">
-              {!offerMode && (
-                <button
-                  type="button"
-                  className="pd-btn pd-btn-sm pd-btn-ghost"
-                  title="Отправить оффер"
-                  onClick={() => setOfferMode(true)}
-                >
-                  💰 Оффер
-                </button>
-              )}
-              {!offerMode && (
-                <input
-                  className="pd-input pd-chat-composer-input"
-                  type="text"
-                  placeholder="Напишите сообщение…"
+            )}
+            <div className="ch-composer-row">
+              <button type="button" className="ch-composer-ico" title="Прикрепить файл" onClick={() => setKindMsg(null)}>📎</button>
+              {offerMode ? (
+                <span className="ch-bubble ch-bubble-offer-flag">Оффер</span>
+              ) : (
+                <textarea
+                  className="ch-composer-input"
+                  placeholder="Написать сообщение..."
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
+                  rows={1}
                 />
               )}
-              <button type="submit" className="pd-btn pd-btn-primary" disabled={sending}>
+              <button type="submit" className="ch-send" disabled={sending} aria-label="Отправить">
                 {sending ? '…' : '➤'}
               </button>
             </div>
           </form>
-        </>
-      )}
+        </section>
+
+        <aside className="ch-right">
+          <div className="ch-card">
+            <div className="ch-card-title">👤 Собеседник</div>
+            <div className="ch-big-avatar" style={{ background: avGrad(otherName) }}>{initialLetter(otherName)}</div>
+            <div className="ch-other-name">{otherName}</div>
+            {otherRole && <div className={'ch-role ch-role-' + otherRole}>{ROLE_TAG[otherRole]}</div>}
+            <div className="ch-card-rating">★ —</div>
+            <div className="ch-stats">
+              <div className="ch-stat"><span className="ch-stat-k">Сделок</span><span className="ch-stat-v">—</span></div>
+              <div className="ch-stat"><span className="ch-stat-k">Отзывов</span><span className="ch-stat-v">—</span></div>
+              <div className="ch-stat"><span className="ch-stat-k">Город</span><span className="ch-stat-v">—</span></div>
+              <div className="ch-stat"><span className="ch-stat-k">На сайте с</span><span className="ch-stat-v">—</span></div>
+            </div>
+          </div>
+
+          <div className="ch-card">
+            <div className="ch-card-title">⚡ Действия</div>
+            <button type="button" className="ch-action" onClick={() => setOfferMode(true)}>💰 Предложить цену</button>
+            <button type="button" className="ch-action" onClick={() => setKindMsg(null)}>✅ Оформить сделку</button>
+            <button type="button" className="ch-action" onClick={() => setKindMsg(null)}>📎 Отправить файл</button>
+            <button type="button" className="ch-action ch-action-danger" onClick={() => setKindMsg(null)}>🚫 Заблокировать</button>
+          </div>
+        </aside>
+      </div>
     </div>
   )
 }

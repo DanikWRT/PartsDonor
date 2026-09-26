@@ -71,8 +71,9 @@ function AppInner() {
   const isShowcase = pathname === '/' || pathname.startsWith('/storefront/')
   const isStorefront = pathname.startsWith('/storefront/')
   const isWizard = pathname.startsWith('/donor/new')
+  const isChat = pathname === '/chats' || pathname.startsWith('/chat/')
   return (
-    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}${isWizard ? ' pd-app-wizard' : ''}`}>
+    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}${isWizard ? ' pd-app-wizard' : ''}${isChat ? ' pd-app-chat' : ''}`}>
       <HeaderNav onCartOpen={() => setCartOpen(true)} />
       <main className="pd-main">
         <Routes>

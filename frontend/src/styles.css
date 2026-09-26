@@ -1492,3 +1492,38 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   .pd-chat-view { height: calc(100vh - 120px); }
   .pd-chat-composer { position: sticky; bottom: 0; background: #fff; padding: 8px; border-top: 1px solid #e3e6ea; }
 }
+
+/* ============ BE-6: Storefront / Share ============ */
+.pd-storefront { display: flex; flex-direction: column; gap: 12px; }
+.pd-panel { background: #fff; border: 1px solid #e6e7eb; border-radius: 12px; padding: 14px; }
+.pd-st-name { margin: 0 0 4px; font-size: 18px; color: #111; }
+.pd-st-rating { font-size: 13px; color: #555; margin-bottom: 10px; }
+.pd-st-dist { display: flex; flex-direction: column; gap: 4px; }
+.pd-st-dist-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #444; }
+.pd-st-dist-label { width: 26px; flex: 0 0 auto; }
+.pd-st-dist-bar { flex: 1 1 auto; height: 8px; background: #edf0f5; border-radius: 999px; overflow: hidden; }
+.pd-st-dist-fill { height: 100%; background: #2563eb; border-radius: 999px; }
+.pd-st-dist-count { width: 20px; text-align: right; color: #777; }
+.pd-st-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.pd-st-metric { background: #fff; border: 1px solid #e6e7eb; border-radius: 12px; padding: 10px; text-align: center; }
+.pd-st-metric b { display: block; font-size: 18px; color: #2563eb; }
+.pd-st-metric span { font-size: 12px; color: #777; }
+.pd-st-sharebar { display: flex; flex-direction: column; gap: 8px; }
+.pd-st-item { flex-direction: row; align-items: center; gap: 12px; cursor: pointer; }
+.pd-st-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.pd-st-check { flex: 0 0 auto; }
+.pd-st-check input { width: 18px; height: 18px; accent-color: #2563eb; }
+
+/* share modal */
+.pd-modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 100; }
+.pd-modal { background: #fff; border-radius: 14px; max-width: 560px; width: 100%; padding: 16px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow: auto; }
+.pd-modal-title { margin: 0; font-size: 16px; }
+.pd-modal-text { width: 100%; border: 1px solid #d6dae2; border-radius: 10px; padding: 10px; font-size: 13px; font-family: inherit; resize: vertical; background: #f7f8fa; color: #111; }
+.pd-modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+@media (max-width: 767px) {
+  .pd-st-metrics { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 768px) {
+  .pd-st-sharebar { flex-direction: row; align-items: center; }
+  .pd-st-sharebar .pd-search { flex: 1 1 auto; }
+}

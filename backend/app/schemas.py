@@ -621,3 +621,51 @@ class DialogDetailOut(DialogOut):
 class DialogReadOut(BaseModel):
     ok: bool = True
 
+
+# --- BE-6: storefront / share ---
+
+
+class StorefrontCompany(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str | None = None
+    verified: bool = False
+    rating: float = 0.0
+
+
+class StorefrontMetrics(BaseModel):
+    total_listings: int = 0
+    available: int = 0
+    sold: int = 0
+    avg_rating: float = 0.0
+    review_count: int = 0
+    total_deals: int = 0
+
+
+class StorefrontItem(BaseModel):
+    id: uuid.UUID
+    title: str
+    price_rub: float
+    condition: PartCondition
+    status: ListingStatus
+    donor_lot_id: uuid.UUID | None = None
+    created_at: datetime
+
+
+class StorefrontOut(BaseModel):
+    company: StorefrontCompany
+    metrics: StorefrontMetrics
+    rating_distribution: dict[int, int]
+    items: list[StorefrontItem]
+
+
+class ShareTextIn(BaseModel):
+    listing_ids: list[uuid.UUID]
+    note: str | None = None
+    include_links: bool = True
+
+
+class ShareTextOut(BaseModel):
+    text: str
+    preview: bool = True
+

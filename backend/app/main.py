@@ -43,6 +43,7 @@ from app.models import (
     Listing,
     ListingStatus,
     ListingSubscription,
+    MasterProfile,
     PartCondition,
     Review,
 )
@@ -70,6 +71,9 @@ from app.schemas import (
     ListingIn,
     ListingOut,
     ListingUpdate,
+    MasterProfileIn,
+    MasterProfileOut,
+    MasterProfileDetail,
     ReviewIn,
     ReviewOut,
     SubscriptionIn,
@@ -1415,6 +1419,136 @@ async def _on_payment_succeeded(obj: dict, db: AsyncSession) -> bool:
     await db.commit()
     log.info("ЮKassa payment.succeeded: сделка %s → escrow_paid", deal.id)
     return True
+
+
+# ============================== MASTER PROFILE (BE-5) ==============================
+
+
+def _mp_out(profile: MasterProfile, company: Company | None = None) -> dict:
+    """Плоский dict ответа — собираем ДО commit, чтобы не попасть в
+    expired/lazy reload (паттерн BE-4 _kb_out).
+    """
+    return {
+        "company_id": profile.company_id,
+        "tagline": profile.tagline,
+        "city": profile.city,
+        "since": profile.since,
+        "experience": profile.experience or [],
+        "services": profile.services or [],
+        "arsenal": profile.arsenal or [],
+        "portfolio": profile.portfolio or [],
+        "b2b": profile.b2b or [],
+        "contacts": profile.contacts or [],
+        "created_at": profile.created_at,
+        "company": company,
+    }
+
+
+async def _mp_rating(db: AsyncSession, company_id: uuid.UUID) -> tuple[float, int, dict]:
+    """Рейтинг мастера по отзывам Review, где seller_id == company_id.
+    Возвращает (avg_rating, review_count, rating_distribution{1..5}).
+    """
+    rows = (
+        (await db.execute(select(Review.rating).where(Review.seller_id == company_id)))
+        .scalars()
+        .all()
+    )
+    review_count = len(rows)
+    avg_rating = round(sum(rows) / review_count, 2) if rows else 0.0
+    dist = {str(i): 0 for i in range(1, 6)}
+    for r in rows:
+        if 1 <= r <= 5:
+            dist[str(r)] += 1
+    return avg_rating, review_count, dist
+
+
+@router.put("/master/profiles/{company_id}", response_model=MasterProfileOut)
+async def upsert_master_profile(
+    company_id: uuid.UUID,
+    payload: MasterProfileIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.seller, UserRole.admin)),
+) -> dict:
+    """Upsert профиля мастера по компании (для seller/admin).
+    Ответ строим ДО commit, чтобы избежать expired/lazy reload.
+    """
+    company = await db.get(Company, company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    profile = (
+        await db.execute(select(MasterProfile).where(MasterProfile.company_id == company_id))
+    ).scalar_one_or_none()
+    if profile is None:
+        profile = MasterProfile(company_id=company_id)
+
+    profile.tagline = payload.tagline
+    profile.city = payload.city
+    profile.since = payload.since
+    profile.experience = payload.experience
+    profile.services = payload.services
+    profile.arsenal = payload.arsenal
+    profile.portfolio = payload.portfolio
+    profile.b2b = payload.b2b
+    profile.contacts = payload.contacts
+    db.add(profile)
+    await db.flush()  # применить server_default (created_at) до сборки ответа
+
+    out = _mp_out(profile, company)  # build BEFORE commit
+    await db.commit()
+    return out
+
+
+@router.get("/master/profiles/{company_id}", response_model=MasterProfileDetail)
+async def get_master_profile(
+    company_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> MasterProfileDetail:
+    """Профиль мастера: поля профиля + рейтинг/распределение из отзывов.
+    Если профиля нет — отдаём пустые дефолты (не 404).
+    """
+    profile = (
+        await db.execute(select(MasterProfile).where(MasterProfile.company_id == company_id))
+    ).scalar_one_or_none()
+    company = await db.get(Company, company_id)
+    if profile is None:
+        # пустой профиль-заглушка (без записи в БД): пустые дефолты
+        profile = MasterProfile(company_id=company_id)
+        profile.tagline = ""
+        profile.city = ""
+        profile.since = 0
+        profile.experience = []
+        profile.services = []
+        profile.arsenal = []
+        profile.portfolio = []
+        profile.b2b = []
+        profile.contacts = []
+        profile.created_at = datetime.now(timezone.utc)
+
+    avg_rating, review_count, dist = await _mp_rating(db, company_id)
+    out = _mp_out(profile, company)
+    out["avg_rating"] = avg_rating
+    out["review_count"] = review_count
+    out["rating_distribution"] = dist
+    return MasterProfileDetail(**out)
+
+
+@router.get("/master/profiles", response_model=list[MasterProfileDetail])
+async def list_master_profiles(
+    db: AsyncSession = Depends(get_db),
+) -> list[MasterProfileDetail]:
+    """Список всех профилей мастеров (опционально)."""
+    profiles = list((await db.execute(select(MasterProfile))).scalars().all())
+    out: list[MasterProfileDetail] = []
+    for p in profiles:
+        company = await db.get(Company, p.company_id)
+        avg_rating, review_count, dist = await _mp_rating(db, p.company_id)
+        d = _mp_out(p, company)
+        d["avg_rating"] = avg_rating
+        d["review_count"] = review_count
+        d["rating_distribution"] = dist
+        out.append(MasterProfileDetail(**d))
+    return out
 
 
 # ============================== REVIEWS ==============================

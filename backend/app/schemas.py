@@ -365,6 +365,44 @@ class DonorSchema(BaseModel):
     components: list[DonorComponent]
 
 
+# --- Master profile (BE-5: профиль мастера) ---
+
+
+class MasterProfileIn(BaseModel):
+    tagline: str = ""
+    city: str = ""
+    since: int = 0
+    experience: list = []
+    services: list = []
+    arsenal: list = []
+    portfolio: list = []
+    b2b: list = []
+    contacts: list = []
+
+
+class MasterProfileOut(BaseModel):
+    company_id: uuid.UUID
+    tagline: str
+    city: str
+    since: int
+    experience: list = []
+    services: list = []
+    arsenal: list = []
+    portfolio: list = []
+    b2b: list = []
+    contacts: list = []
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MasterProfileDetail(MasterProfileOut):
+    company: CompanyOut | None = None
+    avg_rating: float = 0.0
+    review_count: int = 0
+    rating_distribution: dict = {}
+
+
 # --- Прочее ---
 
 

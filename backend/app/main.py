@@ -261,6 +261,8 @@ async def catalog(
     price_to: float | None = Query(default=None, description="Макс. цена"),
     only_stock: bool = Query(default=False, description="Только в наличии на складе"),
     sort: str | None = Query(default=None, description="price_asc|price_desc|name"),
+    limit: int = Query(default=50, ge=1, le=200, description="Макс. число записей на страницу"),
+    offset: int = Query(default=0, ge=0, description="Смещение (пагинация)"),
     db: AsyncSession = Depends(get_db),
 ) -> list[CatalogItem]:
     """Каталог деталей. Данные — из InvenTree (source of truth), цены — с наших листингов.
@@ -368,6 +370,8 @@ async def catalog(
         items.sort(key=lambda i: (i.listing_price is None, -(i.listing_price or 0)))
     elif sort == "name":
         items.sort(key=lambda i: i.name.lower())
+    # Пагинация ПОСЛЕ фильтрации и сортировки, чтобы фильтры/порядок оставались верными.
+    items = items[offset : offset + limit]
     return items
 
 
@@ -505,6 +509,8 @@ async def list_donor_lots(
     brand: str | None = Query(default=None),
     model: str | None = Query(default=None),
     only_available: bool = Query(default=False),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> list[DonorLotOut]:
     """Список донор-комплектов с фильтрами."""
@@ -520,6 +526,8 @@ async def list_donor_lots(
         stmt = stmt.join(DeviceSchema).where(DeviceSchema.brand.ilike(f"%{brand}%"))
     if model:
         stmt = stmt.join(DeviceSchema).where(DeviceSchema.model.ilike(f"%{model}%"))
+    # PERF-2: пагинация на уровне SQL (offset/limit), порядок сохраняется.
+    stmt = stmt.offset(offset).limit(limit)
     records = list((await db.execute(stmt)).scalars().all())
     # PERF-1: один запрос для всех листингов вместо N+1 в цикле.
     lot_ids = [lot.id for lot in records]
@@ -913,6 +921,8 @@ async def get_device_schema(schema_id: uuid.UUID, db: AsyncSession = Depends(get
 async def list_listings(
     status: ListingStatus | None = None,
     seller_id: uuid.UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> list[Listing]:
     stmt = select(Listing).options(selectinload(Listing.seller)).order_by(Listing.created_at.desc())
@@ -920,6 +930,8 @@ async def list_listings(
         stmt = stmt.where(Listing.status == status)
     if seller_id is not None:
         stmt = stmt.where(Listing.seller_id == seller_id)
+    # PERF-2: пагинация на уровне SQL (offset/limit), порядок сохраняется.
+    stmt = stmt.offset(offset).limit(limit)
     records = list((await db.execute(stmt)).scalars().all())
     # PERF-1: батч InvenTree-лукапов — один gather вместо N последовательных HTTP.
     unique_ids = {r.inventree_part_id for r in records if r.inventree_part_id is not None}
@@ -1067,6 +1079,8 @@ async def create_deal(payload: DealCreateIn, db: AsyncSession = Depends(get_db))
 @router.get("/deals", response_model=list[DealOut])
 async def list_deals(
     status: DealStatus | None = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> list[Deal]:
     stmt = select(Deal).options(
@@ -1074,6 +1088,8 @@ async def list_deals(
     ).order_by(Deal.created_at.desc())
     if status is not None:
         stmt = stmt.where(Deal.status == status)
+    # PERF-2: пагинация на уровне SQL (offset/limit), порядок сохраняется.
+    stmt = stmt.offset(offset).limit(limit)
     return list((await db.execute(stmt)).scalars().all())
 
 
@@ -1342,6 +1358,8 @@ async def delete_subscription(
 
 @router.get("/notifications", response_model=list[NotificationOut])
 async def list_notifications(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
 ) -> list[NotificationOut]:
@@ -1356,6 +1374,8 @@ async def list_notifications(
                 ListingSubscription.notified == True,  # noqa: E712
             )
             .order_by(ListingSubscription.notified_at.desc())
+            .offset(offset)
+            .limit(limit)
         )
     ).scalars().all()
     out: list[NotificationOut] = []
@@ -1629,10 +1649,13 @@ async def get_master_profile(
 
 @router.get("/master/profiles", response_model=list[MasterProfileDetail])
 async def list_master_profiles(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> list[MasterProfileDetail]:
     """Список всех профилей мастеров (опционально)."""
-    profiles = list((await db.execute(select(MasterProfile))).scalars().all())
+    stmt = select(MasterProfile).order_by(MasterProfile.id).offset(offset).limit(limit)
+    profiles = list((await db.execute(stmt)).scalars().all())
     out: list[MasterProfileDetail] = []
     for p in profiles:
         company = await db.get(Company, p.company_id)
@@ -1667,11 +1690,14 @@ async def company_rating(company_id: uuid.UUID, db: AsyncSession = Depends(get_d
 @router.get("/reviews", response_model=list[ReviewOut])
 async def list_reviews(
     seller_id: uuid.UUID | None = None,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> list[Review]:
     stmt = select(Review).order_by(Review.created_at.desc())
     if seller_id is not None:
         stmt = stmt.where(Review.seller_id == seller_id)
+    stmt = stmt.offset(offset).limit(limit)
     return list((await db.execute(stmt)).scalars().all())
 
 
@@ -1747,6 +1773,8 @@ def _assert_donor_owner(user: User, donor: Donor) -> None:
 @router.get("/donors", response_model=list[DonorOut])
 async def list_my_donors(
     donor_status: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles(UserRole.seller, UserRole.buyer, UserRole.admin)),
 ) -> list[DonorOut]:
@@ -1759,6 +1787,8 @@ async def list_my_donors(
     if donor_status:
         stmt = stmt.where(Donor.status == donor_status)
     stmt = stmt.order_by(Donor.updated_at.desc())
+    # PERF-2: пагинация на уровне SQL (offset/limit), порядок сохраняется.
+    stmt = stmt.offset(offset).limit(limit)
     donors = list((await db.execute(stmt)).scalars().all())
     return [await _donor_out(db, d) for d in donors]
 
@@ -2119,6 +2149,35 @@ async def buy_request_counters(
     return BuyCountersOut(total_open=total_open, urgent=urgent, by_type=by_type, by_status=by_status)
 
 
+# PERF-2: статический маршрут /buy-requests/me размещён ДО динамического /buy-requests/{id},
+# иначе "me" уходит в {id} (uuid_parsing 422).
+@router.get("/buy-requests/me", response_model=list[BuyRequestOut])
+async def my_buy_requests(
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
+) -> list[BuyRequestOut]:
+    """Свои заявки текущего пользователя."""
+    if user.company_id is None:
+        return []
+    records = list((await db.execute(
+        select(BuyRequest).where(BuyRequest.buyer_id == user.company_id)
+        .order_by(BuyRequest.created_at.desc())
+        .offset(offset).limit(limit)
+    )).scalars().all())
+    out: list[BuyRequestOut] = []
+    for r in records:
+        buyer = await db.get(Company, r.buyer_id)
+        out.append(BuyRequestOut(
+            id=r.id, type=r.type, brand=r.brand, model=r.model, cond=r.cond,
+            budget=r.budget, urgent=r.urgent, city=r.city, buyer_id=r.buyer_id,
+            status=r.status, created_at=r.created_at,
+            buyer_name=buyer.name if buyer else None,
+        ))
+    return out
+
+
 @router.get("/buy-requests/{id}", response_model=BuyRequestDetailOut)
 async def get_buy_request(
     id: uuid.UUID,
@@ -2210,30 +2269,6 @@ async def delete_buy_request(
     await db.delete(record)
     await db.commit()
     return {"ok": True}
-
-
-
-@router.get("/buy-requests/me", response_model=list[BuyRequestOut])
-async def my_buy_requests(
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles(UserRole.buyer, UserRole.admin)),
-) -> list[BuyRequestOut]:
-    """Свои заявки текущего пользователя."""
-    if user.company_id is None:
-        return []
-    records = list((await db.execute(
-        select(BuyRequest).where(BuyRequest.buyer_id == user.company_id).order_by(BuyRequest.created_at.desc())
-    )).scalars().all())
-    out: list[BuyRequestOut] = []
-    for r in records:
-        buyer = await db.get(Company, r.buyer_id)
-        out.append(BuyRequestOut(
-            id=r.id, type=r.type, brand=r.brand, model=r.model, cond=r.cond,
-            budget=r.budget, urgent=r.urgent, city=r.city, buyer_id=r.buyer_id,
-            status=r.status, created_at=r.created_at,
-            buyer_name=buyer.name if buyer else None,
-        ))
-    return out
 
 
 @router.post("/buy-requests/{id}/responses", response_model=BuyResponseOut, status_code=201)

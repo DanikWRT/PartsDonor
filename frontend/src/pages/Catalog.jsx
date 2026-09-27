@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useCart } from '../cart.jsx'
-import { DonorExplodedMini, statusCls } from '../components/DonorExploded.jsx'
+import { statusCls } from '../components/DonorExploded.jsx'
+import DonorBlueprintMini from '../components/DonorBlueprintMini.jsx'
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('ru-RU')
 
@@ -55,7 +56,7 @@ function GenericBlueprint({ n }) {
   )
 }
 
-function DonorBlueprint({ donor }) {
+function DonorBlueprint({ donor, hoverId, onHoverPart }) {
   const comps = donor.components || []
   if (comps.length === 0) {
     return (
@@ -65,14 +66,20 @@ function DonorBlueprint({ donor }) {
     )
   }
   return (
-    <div className="scr-mini">
-      <DonorExplodedMini components={comps} />
+    <div className="donor-blueprint">
+      <DonorBlueprintMini
+        components={comps}
+        uId={donor.id}
+        hoverId={hoverId}
+        onHoverPart={onHoverPart}
+      />
     </div>
   )
 }
 
 const DonorCard = React.memo(function DonorCard({ lot }) {
   const { add, has } = useCart()
+  const [hoverPart, setHoverPart] = useState(null)
   const comps = lot.components || []
   const total = comps.reduce((s, c) => s + (Number(c.price_rub) || 0), 0)
   const avail = comps.filter((c) => statusCls(c.status) === 'in').length
@@ -89,7 +96,7 @@ const DonorCard = React.memo(function DonorCard({ lot }) {
         <span className="donor-badge">Донор</span>
       </div>
 
-      <DonorBlueprint donor={lot} />
+      <DonorBlueprint donor={lot} hoverId={hoverPart} onHoverPart={setHoverPart} />
 
       <div className="donor-condition">{lot.condition || 'Состояние не указано'}</div>
 
@@ -98,8 +105,15 @@ const DonorCard = React.memo(function DonorCard({ lot }) {
           {comps.map((c, i) => {
             const si = slotInfo(c)
             const [pc, pl] = pill(statusCls(c.status))
+            const pid = c.part_id != null ? c.part_id : String(c.slot || '')
+            const hl = hoverPart != null && String(hoverPart) === String(pid)
             return (
-              <div className="comp-row" key={`${c.slot || ''}-${c.part_id || i}`}>
+              <div
+                className={`comp-row${hl ? ' hl' : ''}`}
+                key={`${c.slot || ''}-${c.part_id || i}`}
+                onMouseEnter={() => setHoverPart(pid)}
+                onMouseLeave={() => setHoverPart(null)}
+              >
                 <div className="cr-icon">{si.icon}</div>
                 <div className="cr-name">
                   {si.label}

@@ -94,3 +94,23 @@ Add a new scoped section to styles.css (prefix `kb-`, plus `.pd-app-kb` wrapper 
 - _scr7_spec.md (this, refined)
 
 Worktree: /home/aifactory/PartsDonor/.worktrees/t_3e7123f2 (branch wt/t_3e7123f2). Backend live on 8001. Vite via `node_modules/.bin/vite --port <fresh>` with BE_PORT=8001. Playwright available. Do NOT use npx.
+
+---
+
+## SCR-7 implementation status (this worktree, branch wt/t_3e7123f2)
+
+FRONTEND rebuild COMPLETE - build exit 0, e2e ALL PASS, screenshots captured (no h-scroll @1440 & @390, modal open).
+
+Files changed:
+- frontend/src/pages/Kb.jsx - full dark reference-07 rebuild (hero-stats from /kb/articles?limit=100; rubric sidebar + tags nav-card; toolbar search+sort; articles grid; right-col top-authors + how-rating-works; detail view; publish modal with choice-group rubric picker).
+- frontend/src/App.jsx - added isKb + pd-app-kb wrapper class (mirrors pd-app-chat). Routes unchanged.
+- frontend/src/styles.css - new scoped kb-* dark block under .pd-app-kb (tokens redefined in scope, bg-blueprint reuse, 3-col 260/1fr/280, <=1200 220/1fr + right hidden, <=900 single-col rubric chips, <=600 stacked + 2x2 hero, touch >=44px). Old light pd-kb-* block left unused (not referenced by new component).
+- backend/_scr7_e2e.sh - curl+jq e2e (register/login, POST unique article, list/q/cat verify, categories count, vote increments, top-authors), exit 0/1. ALL PASS.
+- screenshots/scr7_shot.cjs + scr7-kb-desktop.png / scr7-kb-mobile.png / scr7-kb-modal.png.
+
+Decisions:
+1. btnCreate (Novaya statya) lives in a page-level .kb-head bar (only when logged in), NOT the global shared HeaderNav - HeaderNav is page-agnostic and touching it would risk other pages. Matches reference intent.
+2. 'Snachala s prioritetom' sort is client-side (fetch sort=newest then re-sort priority desc, created_at desc); other three map to backend sort param.
+3. Modal 'Ssylka na skhemu/foto' (optional) has no backend field - appended as a trailing 'Ssylka: <url>' line in body only when non-empty.
+4. Hero-stats/authors/tags computed from a dedicated unfiltered /kb/articles?limit=100 fetch so they stay stable while grid is filtered.
+5. Backend on 8001 was a stale instance without BE-4 routes - restarted from THIS tree's backend (BE-4 present), and seeded the 3 missing categories (sovmestimost/layfhaki/remont) in the shared DB.

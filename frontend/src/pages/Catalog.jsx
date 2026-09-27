@@ -250,7 +250,14 @@ const DonorCard = React.memo(function DonorCard({ lot }) {
 
       <DonorBlueprint donor={lot} hoverId={hoverPart} onHoverPart={setHoverPart} />
 
-      <div className="donor-condition">{lot.condition || 'Состояние не указано'}</div>
+      <div className="donor-condition">
+        {lot.condition === 'for_parts'
+          ? 'Состояние: на запчасти'
+          : lot.condition === 'used'
+            ? 'Состояние: б/у'
+            : lot.condition || 'Состояние не указано'}
+        {lot.provenance ? ` · ${lot.provenance}` : ''}
+      </div>
 
       {comps.length > 0 && (
         <div className="donor-composition">

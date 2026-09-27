@@ -4063,3 +4063,4 @@ html, body { overflow-x: hidden; }
   .ms-grid { grid-template-columns: 1fr; }
   .ms-rating-bar { grid-template-columns: 16px 1fr 26px; }
 }
+@keyframes pd-spin { to { transform: rotate(360deg); } }

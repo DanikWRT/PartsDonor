@@ -1,23 +1,30 @@
 import React from 'react'
 import { Routes, Route, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import DonorView from './pages/DonorView.jsx'
-import DonorLots from './pages/DonorLots.jsx'
-import DonorLot from './pages/DonorLot.jsx'
-import Catalog from './pages/Catalog.jsx'
-import Cabinet from './pages/Cabinet.jsx'
-import Deal from './pages/Deal.jsx'
-import PartDetail from './pages/PartDetail.jsx'
-import BuyerCabinet from './pages/BuyerCabinet.jsx'
-import Chats from './pages/Chats.jsx'
-import ChatView from './pages/ChatView.jsx'
-import Kb from './pages/Kb.jsx'
-import Master from './pages/Master.jsx'
-import Storefront from './pages/Storefront.jsx'
-import DonorWizard from './pages/DonorWizard.jsx'
 import { CartProvider, useCart } from './cart.jsx'
 import CartDrawer from './components/CartDrawer.jsx'
-import AuthPage from './pages/Auth.jsx'
 import { readSession, clearSession, ROLE_LABELS } from './auth.jsx'
+
+
+// --- PERF-3: code-splitting роутов через React.lazy ---
+const DonorView = React.lazy(() => import('./pages/DonorView.jsx'))
+const DonorLots = React.lazy(() => import('./pages/DonorLots.jsx'))
+const DonorLot = React.lazy(() => import('./pages/DonorLot.jsx'))
+const Catalog = React.lazy(() => import('./pages/Catalog.jsx'))
+const Cabinet = React.lazy(() => import('./pages/Cabinet.jsx'))
+const Deal = React.lazy(() => import('./pages/Deal.jsx'))
+const PartDetail = React.lazy(() => import('./pages/PartDetail.jsx'))
+const BuyerCabinet = React.lazy(() => import('./pages/BuyerCabinet.jsx'))
+const Chats = React.lazy(() => import('./pages/Chats.jsx'))
+const ChatView = React.lazy(() => import('./pages/ChatView.jsx'))
+const Kb = React.lazy(() => import('./pages/Kb.jsx'))
+const Storefront = React.lazy(() => import('./pages/Storefront.jsx'))
+const DonorWizard = React.lazy(() => import('./pages/DonorWizard.jsx'))
+const Master = React.lazy(() => import('./pages/Master.jsx'))
+const AuthPage = React.lazy(() => import('./pages/Auth.jsx'))
+
+function RouteFallback() {
+  return <div className="scr-loading pd-route-loading">Загрузка…</div>
+}
 
 function HeaderNav({ onCartOpen }) {
   const { count } = useCart()
@@ -80,6 +87,7 @@ function AppInner() {
     <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}${isWizard ? ' pd-app-wizard' : ''}${isChat ? ' pd-app-chat' : ''}${isKb ? ' pd-app-kb' : ''}`}>
       <HeaderNav onCartOpen={() => setCartOpen(true)} />
       <main className="pd-main">
+        <React.Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<Catalog />} />
           <Route path="/donor-lots" element={<DonorLots />} />
@@ -102,6 +110,7 @@ function AppInner() {
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />
         </Routes>
+        </React.Suspense>
       </main>
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
     </div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { authFetch, readSession } from '../auth.jsx'
+import WindowedList from '../components/WindowedList.jsx'
 
 // -------- helpers (shared by list + view) --------
 
@@ -44,7 +45,7 @@ export function previewMsg(msg) {
 // other participant role is not provided by the backend; infer from my own role.
 const otherRole = (myRole) => (myRole === 'seller' ? 'buyer' : myRole === 'buyer' ? 'seller' : null)
 
-export function DialogRow({ d, active, onClick, myRole }) {
+export const DialogRow = React.memo(function DialogRow({ d, active, onClick, myRole }) {
   const role = otherRole(myRole)
   return (
     <button type="button" className={'ch-row' + (active ? ' active' : '')} onClick={onClick}>
@@ -66,7 +67,7 @@ export function DialogRow({ d, active, onClick, myRole }) {
       {d.unread_count > 0 && <span className="ch-unread">{d.unread_count}</span>}
     </button>
   )
-}
+})
 
 // ChatList — shared dialog list used by both /chats (standalone) and the left
 // column of the 3-column chat view.
@@ -162,16 +163,23 @@ export function ChatList({ activeId, onOpen }) {
       <div className="ch-list-body">
         {err && <p className="ch-err">{err}</p>}
         {!err && loading && <p className="ch-hint">Загрузка сообщений…</p>}
-        {!err && !loading && filtered.length === 0 && (
+        {filtered.length === 0 ? (
           <p className="ch-hint">
             {search || filter === 'unread'
               ? 'Ничего не найдено'
               : 'Диалогов пока нет. Начните общение со встречной стороной по объявлению.'}
           </p>
+        ) : (
+          <WindowedList
+            items={filtered}
+            rowHeight={72}
+            resetKey={filtered.length + ':' + filter + ':' + search}
+            className="ch-list-inner"
+            renderItem={(d, i) => (
+              <DialogRow key={d.id} d={d} active={String(d.id) === String(activeId)} onClick={() => open(d)} myRole={myRole} />
+            )}
+          />
         )}
-        {filtered.map((d) => (
-          <DialogRow key={d.id} d={d} active={String(d.id) === String(activeId)} onClick={() => open(d)} myRole={myRole} />
-        ))}
       </div>
     </aside>
   )

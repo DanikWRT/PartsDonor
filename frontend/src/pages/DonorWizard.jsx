@@ -525,7 +525,7 @@ export default function DonorWizard() {
                   <div className="wz-photo-grid">
                     {photos.map((p, i) => (
                       <div key={i} className="wz-photo-thumb">
-                        <img src={p.url} alt={p.name || 'фото'} />
+                        <img src={p.url} alt={p.name || 'фото'} loading="lazy" />
                         <button type="button" className="wz-rm" onClick={() => removePhoto(i)} aria-label="Удалить">✕</button>
                       </div>
                     ))}

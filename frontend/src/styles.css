@@ -3071,3 +3071,24 @@ html, body { overflow-x: hidden; }
   .ch-send, .ch-composer-ico { width: 44px; height: 44px; flex-basis: 44px; }
   .ch-pinned { margin: 10px 12px 2px; }
 }
+
+/* ============ PERF-3: frontend performance ============ */
+/* Route code-split (React.lazy) fallback */
+.pd-route-loading { min-height: 50vh; display: flex; align-items: center; justify-content: center; }
+
+/* Virtualized list (WindowedList) — scroll anchor + spacer keep natural height */
+.pd-wlist { min-height: 0; overflow-y: auto; }
+.pd-wlist-spacer { height: 100%; }
+.pd-wlist .ch-row { margin-bottom: 4px; }
+
+/* Long card grids / message threads: browser skips rendering off-screen rows
+   (virtualization for variable-height items). contain-intrinsic-size avoids
+   scrollbar/hitbox jumps while items defer layout. */
+.donor-card, .part-card, .sf-product-card, .pd-donor-card, .ch-msg {
+  content-visibility: auto;
+}
+.donor-card { contain-intrinsic-size: auto 420px; }
+.part-card { contain-intrinsic-size: auto 300px; }
+.sf-product-card { contain-intrinsic-size: auto 260px; }
+.pd-donor-card { contain-intrinsic-size: auto 380px; }
+.ch-msg { contain-intrinsic-size: auto 84px; }

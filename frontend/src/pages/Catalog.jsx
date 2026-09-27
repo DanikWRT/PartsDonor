@@ -71,7 +71,7 @@ function DonorBlueprint({ donor }) {
   )
 }
 
-function DonorCard({ lot }) {
+const DonorCard = React.memo(function DonorCard({ lot }) {
   const { add, has } = useCart()
   const comps = lot.components || []
   const total = comps.reduce((s, c) => s + (Number(c.price_rub) || 0), 0)
@@ -143,9 +143,9 @@ function DonorCard({ lot }) {
       </div>
     </div>
   )
-}
+})
 
-function PartCard({ p }) {
+const PartCard = React.memo(function PartCard({ p }) {
   const { add, has } = useCart()
   const cls = p.in_stock ? 'in' : 'order'
   const stockLabel = p.in_stock ? 'В наличии' : 'Под заказ'
@@ -183,7 +183,7 @@ function PartCard({ p }) {
       </div>
     </div>
   )
-}
+})
 
 const DONOR_TABS = [
   { k: 'all', l: 'Все' },

@@ -246,7 +246,7 @@ function BackcoverLayer({ w, accent, uid }) {
   )
 }
 
-function SlotLayer({ slot, w, skew }) {
+const SlotLayer = React.memo(function SlotLayer({ slot, w, skew }) {
   const uid = `lyr-${slot}`
   const a = SLOT_META[slot]?.accent || '#94a3b8'
   const inner = (() => {
@@ -260,7 +260,7 @@ function SlotLayer({ slot, w, skew }) {
     }
   })()
   return skew ? <g transform={`skewX(${skew}) rotate(${skew * 0.4})`}>{inner}</g> : inner
-}
+})
 
 // UX-4: Flat 2D drawing
 function FlatDrawing({ slot, title }) {
@@ -353,7 +353,7 @@ function ExplosionAxis({ cx, top, bottom }) {
   )
 }
 
-function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUrl }) {
+const ExplodedScheme = React.memo(function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUrl }) {
   const sorted = [...(components || [])].sort((a, b) => {
     const ay = (a.hotspot?.y != null) ? a.hotspot.y : 0;
     const by = (b.hotspot?.y != null) ? b.hotspot.y : 0;
@@ -477,10 +477,10 @@ function ExplodedScheme({ components, onSelectedKey, selectedKey, onSelect, bgUr
       </div>
     </div>
   )
-}
+})
 
 // --- Mini exploded view for card grids ---
-function DonorExplodedMini({ components }) {
+const DonorExplodedMini = React.memo(function DonorExplodedMini({ components }) {
   const [selectedKey, setSelectedKey] = useState(null)
   const limited = components ? components.slice(0, 5) : []
   return (
@@ -493,7 +493,7 @@ function DonorExplodedMini({ components }) {
       />
     </div>
   )
-}
+})
 
 // F7: панель детали (деталь) — right side panel (desktop) / bottom sheet (mobile).
 const STATUS_OPTIONS = [

@@ -521,6 +521,16 @@ async def list_donor_lots(
     if model:
         stmt = stmt.join(DeviceSchema).where(DeviceSchema.model.ilike(f"%{model}%"))
     records = list((await db.execute(stmt)).scalars().all())
+    # PERF-1: один запрос для всех листингов вместо N+1 в цикле.
+    lot_ids = [lot.id for lot in records]
+    listing_id_by_lot: dict[uuid.UUID, uuid.UUID] = {}
+    if lot_ids:
+        listing_rows = (await db.execute(
+            select(Listing).where(Listing.donor_lot_id.in_(lot_ids))
+        )).scalars().all()
+        for l in listing_rows:
+            if l.donor_lot_id is not None:
+                listing_id_by_lot[l.donor_lot_id] = l.id
     out: list[DonorLotOut] = []
     for lot in records:
         component_count = 0
@@ -530,11 +540,7 @@ async def list_donor_lots(
                 component_count = len(bom) if isinstance(bom, list) else 0
             except Exception:
                 component_count = 0
-        listing_id = None
-        listing_res = await db.execute(select(Listing).where(Listing.donor_lot_id == lot.id))
-        listing = listing_res.scalar_one_or_none()
-        if listing:
-            listing_id = listing.id
+        listing_id = listing_id_by_lot.get(lot.id)
         seller_name = lot.seller.name if lot.seller else None
         seller_rating = lot.seller.rating if lot.seller else None
         seller_verified = lot.seller.verified if lot.seller else None
@@ -909,14 +915,24 @@ async def list_listings(
     seller_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> list[Listing]:
-    stmt = select(Listing).order_by(Listing.created_at.desc())
+    stmt = select(Listing).options(selectinload(Listing.seller)).order_by(Listing.created_at.desc())
     if status is not None:
         stmt = stmt.where(Listing.status == status)
     if seller_id is not None:
         stmt = stmt.where(Listing.seller_id == seller_id)
     records = list((await db.execute(stmt)).scalars().all())
+    # PERF-1: батч InvenTree-лукапов — один gather вместо N последовательных HTTP.
+    unique_ids = {r.inventree_part_id for r in records if r.inventree_part_id is not None}
+    async def _fetch(pid):
+        return pid, await _part_info(pid)
+    part_map: dict[int, tuple] = {}
+    if unique_ids:
+        results = await asyncio.gather(*(_fetch(pid) for pid in unique_ids))
+        part_map = {pid: info for pid, info in results}
     for record in records:
-        record.part_name, record.part_category = await _part_info(record.inventree_part_id)
+        record.part_name, record.part_category = part_map.get(
+            record.inventree_part_id, (None, None)
+        )
     return records
 
 
@@ -1053,7 +1069,9 @@ async def list_deals(
     status: DealStatus | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> list[Deal]:
-    stmt = select(Deal).order_by(Deal.created_at.desc())
+    stmt = select(Deal).options(
+        selectinload(Deal.buyer), selectinload(Deal.seller)
+    ).order_by(Deal.created_at.desc())
     if status is not None:
         stmt = stmt.where(Deal.status == status)
     return list((await db.execute(stmt)).scalars().all())

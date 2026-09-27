@@ -174,7 +174,7 @@ class Listing(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # Внешние ключи на инвентарь InvenTree (source of truth)
-    inventree_part_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    inventree_part_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     inventree_stock_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Продавец (мастерская) — наш Company
     seller_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("companies.id"), nullable=True)

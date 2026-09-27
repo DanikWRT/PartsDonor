@@ -13,6 +13,7 @@ import ChatView from './pages/ChatView.jsx'
 import Kb from './pages/Kb.jsx'
 import Storefront from './pages/Storefront.jsx'
 import DonorWizard from './pages/DonorWizard.jsx'
+import Master from './pages/Master.jsx'
 import { CartProvider, useCart } from './cart.jsx'
 import CartDrawer from './components/CartDrawer.jsx'
 import AuthPage from './pages/Auth.jsx'
@@ -50,6 +51,7 @@ function HeaderNav({ onCartOpen }) {
         <NavLink to="/deal">Сделка</NavLink>
         <NavLink to="/chats">Сообщения</NavLink>
         <NavLink to="/storefront">Витрина</NavLink>
+        <NavLink to="/masters">Мастера</NavLink>
         <NavLink to="/donor/new">Добавить донора</NavLink>
         <button type="button" className="cart-btn" onClick={onCartOpen} aria-label="Корзина">🛒 {count}</button>
         {session ? (
@@ -72,8 +74,9 @@ function AppInner() {
   const isStorefront = pathname.startsWith('/storefront/')
   const isWizard = pathname.startsWith('/donor/new')
   const isChat = pathname === '/chats' || pathname.startsWith('/chat/')
+  const isMaster = pathname === '/masters' || pathname.startsWith('/master/')
   return (
-    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}${isWizard ? ' pd-app-wizard' : ''}${isChat ? ' pd-app-chat' : ''}`}>
+    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}${isWizard ? ' pd-app-wizard' : ''}${isChat ? ' pd-app-chat' : ''}${isMaster ? ' pd-app-master' : ''}`}>
       <HeaderNav onCartOpen={() => setCartOpen(true)} />
       <main className="pd-main">
         <Routes>
@@ -92,6 +95,8 @@ function AppInner() {
           <Route path="/kb/:id" element={<Kb />} />
           <Route path="/storefront" element={<Storefront />} />
           <Route path="/storefront/:slug" element={<Storefront />} />
+          <Route path="/masters" element={<Master />} />
+          <Route path="/master/:companyId" element={<Master />} />
           <Route path="/donor/new" element={<DonorWizard />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />

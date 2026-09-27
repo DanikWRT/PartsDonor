@@ -1852,7 +1852,7 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
 .donor-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
 
 .donor-blueprint {
-  position: relative; height: 360px;
+  position: relative; height: 240px;
   border-radius: 14px;
   background:
     radial-gradient(circle at 50% 30%, rgba(79,163,255,.08), transparent 65%),
@@ -1881,23 +1881,33 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   opacity: 0; fill: rgba(124,247,208,.30);
   transition: opacity .25s;
 }
-.bp-part .bp-shape { transition: all .25s; }
+.bp-part .bp-shape,
+.bp-part .bp-part-shape { transition: all .25s; }
 .bp-part:hover .part-hover,
 .bp-part.active .part-hover {
   opacity: 1;
 }
 .bp-part:hover .bp-shape,
-.bp-part.active .bp-shape {
-  filter: drop-shadow(0 0 6px rgba(124,247,208,.75));
+.bp-part.active .bp-shape,
+.bp-part:hover .bp-part-shape,
+.bp-part.active .bp-part-shape {
+  fill: rgba(124,247,208,.35) !important;
+  stroke: #7cf7d0 !important;
+  filter: drop-shadow(0 0 6px rgba(124,247,208,.7));
 }
 /* Доступные детали (в наличии) — остаются в своей tint-заливке; при hover узел неона */
 /* Недоступные/скрытые (sold/grey): полупрозрачные + штриховка, hover -> красный акцент */
-.bp-part.unavailable .bp-shape { opacity: .6; }
+.bp-part.unavailable .bp-shape,
+.bp-part.unavailable .bp-part-shape { opacity: .6; }
 .bp-part.unavailable:hover .part-hover,
 .bp-part.unavailable.active .part-hover { fill: rgba(239,68,68,.28); }
 .bp-part.unavailable:hover .bp-shape,
-.bp-part.unavailable.active .bp-shape {
+.bp-part.unavailable.active .bp-shape,
+.bp-part.unavailable:hover .bp-part-shape,
+.bp-part.unavailable.active .bp-part-shape {
   opacity: 1;
+  fill: rgba(239,68,68,.3) !important;
+  stroke: rgba(239,68,68,.6) !important;
   filter: drop-shadow(0 0 6px rgba(239,68,68,.6));
 }
 .comp-row.hl { background: rgba(124,247,208,.08); }
@@ -1996,8 +2006,8 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-
   border: 1px solid rgba(120,160,220,.15);
   background: rgba(10,15,25,.5); backdrop-filter: blur(8px); z-index: 2;
 }
-.scr-part-icon { font-size: 42px; position: relative; z-index: 1; filter: drop-shadow(0 8px 16px rgba(0,0,0,.5)); transition: transform .5s cubic-bezier(.2,.8,.2,1); }
-.part-card:hover .scr-part-icon { transform: scale(1.08) rotate(-1.5deg); }
+.part-preview svg { width: 70%; height: 70%; position: relative; z-index: 1; filter: drop-shadow(0 8px 16px rgba(0,0,0,.5)); transition: transform .5s cubic-bezier(.2,.8,.2,1); }
+.part-card:hover .part-preview svg { transform: scale(1.08) rotate(-1.5deg); }
 .part-name { font-size: 13px; font-weight: 700; letter-spacing: -.2px; line-height: 1.3; }
 .part-meta { font-size: 11px; color: var(--muted); }
 .part-bottom {

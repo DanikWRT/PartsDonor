@@ -1,27 +1,25 @@
 import React, { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { authFetch } from '../auth.jsx'
 import {
   SLOT_META,
   statusCls,
   statusText,
   normalizeSlot,
-  isFlat,
-  ExplodedScheme,
-  ExplosionAxis,
+  STATUS_OPTIONS,
 } from '../components/DonorExploded.jsx'
+import BlueprintExploded from '../components/BlueprintExploded.jsx'
 
-// F7: панель детали (деталь) — right side panel (desktop) / bottom sheet (mobile).
-import { DetailPanel, conditionText, STATUS_OPTIONS } from '../components/DonorExploded.jsx'
+const REVISIONS = { 'iPhone 13 Pro': 'A2638', 'iPhone 16': 'A2897', 'iPhone 16 Pro': 'A3083' }
 
+// Экран развёртки донора /donor/:brand/:model — 3-колоночный blueprint
+// (эталон ref-iphone16-blueprint-exploded.html). Данные: реальные компоненты
+// из /api/donor/{id} + листинги JOIN по inventree_part_id.
 export default function DonorView() {
   const params = useParams()
   const brand = params.brand || 'Apple'
   const model = params.model || 'iPhone 13 Pro'
   const [data, setData] = useState(null)
-  const [view, setView] = useState('blowup') // 'blowup' | 'list'
-  // F7: выбранная деталь + статус листингов (по listing_id) + notice.
-  const [selected, setSelected] = useState(null) // { slotKey, comp }
   const [listings, setListings] = useState([])
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState(null)
@@ -34,17 +32,10 @@ export default function DonorView() {
       .catch((e) => console.error('load listings err', e))
 
   useEffect(() => {
-    // F7: /donor/:brand/:model → находим schema по brand/model, берём
-    // inventree_donor_part_id и грузим GET /api/donor/{donor_part_id}.
-    // UX-4: координаты слотов (hotspots) лежат в schema, а не в /api/donor —
-    // подмешиваем их в данные донора, иначе все слои схлопываются в одну точку.
     fetch('/api/device-schemas')
       .then((r) => (r.ok ? r.json() : []))
       .then((schemas) => {
         const arr = Array.isArray(schemas) ? schemas : []
-        // brand/model params come URL-encoded (hyphens for spaces), schema stores them
-        // with spaces — normalize both to a key of letters+digits so 'iPhone-13-Pro'
-        // matches 'iPhone 13 Pro'.
         const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '')
         const schema = arr.find(
           (s) => norm(s.brand) === norm(brand) && norm(s.model) === norm(model),
@@ -57,8 +48,7 @@ export default function DonorView() {
       })
       .then(({ schema, donor }) => {
         if (!donor || !donor.components) { setData(null); return }
-        // Если у /api/donor нет hotspots — берём из schema (там точные координаты слотов).
-        const merged = { ...donor }
+        const merged = { ...donor, schema }
         if (!merged.hotspots && schema?.hotspots) merged.hotspots = schema.hotspots
         setData(merged)
       })
@@ -72,7 +62,7 @@ export default function DonorView() {
 
   if (!data || !data.components) return <p className="pd-hint">Загрузка развёртки...</p>
 
-  // F7: нормализуем слоты в короткие ключи + JOIN листингов по inventree_part_id.
+  // Нормализуем слоты в короткие ключи + JOIN листингов по inventree_part_id.
   const components = data.components.map((c) => {
     const slotKey = normalizeSlot(c.slot) || normalizeSlot(c.title) || c.slot
     const schema = (data.hotspots || {})[slotKey] || c.hotspot
@@ -80,16 +70,12 @@ export default function DonorView() {
     return {
       ...c,
       slot: slotKey,
+      slotKey,
       hotspot: (schema && (schema.x != null || schema.y != null)) ? schema : (c.hotspot || {}),
       listing,
-      // статус детали: приоритет — актуальный статус листинга (после PATCH), иначе статус из donor API
       status: listing ? listing.status : (c.status || 'active'),
     }
   })
-
-  const selectedComp = selected
-    ? components.find((c) => c.slot === selected.slotKey && (c.part_id ?? -1) === (selected.partId ?? -1)) || null
-    : null
 
   const setStatus = async (comp, status) => {
     if (!comp.listing) return
@@ -99,9 +85,6 @@ export default function DonorView() {
     }
     setSaving(true)
     setNotice(null)
-    const prev = listings
-    // optimistic update
-    setListings((ls) => ls.map((l) => (l.id === comp.listing.id ? { ...l, status } : l)))
     try {
       const r = await authFetch(`/api/listings/${comp.listing.id}`, {
         method: 'PATCH',
@@ -112,74 +95,50 @@ export default function DonorView() {
       await loadListings()
       setNotice({ kind: 'ok', text: 'Статус обновлён' })
     } catch (e) {
-      setListings(prev)
       setNotice({ kind: 'err', text: 'Ошибка сохранения статуса' })
     } finally {
       setSaving(false)
     }
   }
 
-  return (
-    <div className="pd-f7-page">
-      <h2>Развёртка: {data.model}</h2>
-
-      <div className="pd-tabs" role="tablist">
-        <button
-          role="tab"
-          aria-selected={view === 'blowup'}
-          className={`pd-tab ${view === 'blowup' ? 'active' : ''}`}
-          onClick={() => setView('blowup')}
-        >Разнесённый вид</button>
-        <button
-          role="tab"
-          aria-selected={view === 'list'}
-          className={`pd-tab ${view === 'list' ? 'active' : ''}`}
-          onClick={() => setView('list')}
-        >Список</button>
-      </div>
-
-      <div className="pd-donor">
-        {view === 'blowup' ? (
-          <div className={`pd-f7-layout ${selectedComp ? 'with-panel' : ''}`}>
-            <div className="pd-scheme">
-              <ExplodedScheme
-                components={components}
-                selectedKey={selected?.slotKey}
-                onSelectedKey={(c) => setSelected({ slotKey: c.slot, partId: c.part_id })}
-                bgUrl={data.exploded_view_url}
-              />
-              <p className="pd-note">Клик по слою — открыть деталь и управлять статусом.</p>
-            </div>
-            <DetailPanel
-              comp={selectedComp}
-              onClose={() => setSelected(null)}
-              onSetStatus={setStatus}
-              saving={saving}
-              notice={notice}
-              hasToken={hasToken}
-            />
+  // Блок управления статусом — рендерится под карточкой детали (для владельца листинга).
+  const detailExtra = (comp) => {
+    if (!comp || !comp.listing) return null
+    return (
+      <div className="ex-status-mgmt">
+        <h4>Статус детали</h4>
+        {hasToken ? (
+          <div className="ex-status-btns">
+            {STATUS_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                className={`ex-status-btn${comp.status === o.value ? ' active' : ''}`}
+                disabled={saving || comp.status === o.value}
+                onClick={() => setStatus(comp, o.value)}
+              >{o.label}</button>
+            ))}
           </div>
         ) : (
-          <div className="pd-parts">
-            {components.map((c) => (
-              <button
-                key={`${c.slot}-${c.part_id ?? c.slot}`}
-                type="button"
-                className="pd-part"
-                onClick={() => { setView('blowup'); setSelected({ slotKey: c.slot, partId: c.part_id }) }}
-              >
-                <span className={`dot ${statusCls(c.status)}`} />
-                <span>
-                  <strong>{c.title || SLOT_META[c.slot]?.label}</strong>
-                  <span className="pd-part-price"> — {(c.price_rub || 0).toLocaleString('ru-RU')} ₽ · {statusText(c.status)}</span>
-                </span>
-                <span className="pd-part-mark">Открыть деталь</span>
-              </button>
-            ))}
-            <p className="pd-note">Клик по детали открывает панель управления статусом.</p>
-          </div>
+          <p className="pd-muted">Необходим вход (JWT отсутствует)</p>
         )}
+        {notice && <p className={`ex-notice ${notice.kind}`}>{notice.text}</p>}
       </div>
-    </div>
+    )
+  }
+
+  return (
+    <BlueprintExploded
+      components={components}
+      meta={{
+        brand,
+        model,
+        revision: REVISIONS[model] || 'A2897',
+        donorPartId: data.schema?.inventree_donor_part_id ?? data.donor_part_id,
+        explodedUrl: data.exploded_view_url,
+      }}
+      detailExtra={detailExtra}
+      back={<Link to="/donor-lots" className="ex-back">← Назад к донорам</Link>}
+    />
   )
 }

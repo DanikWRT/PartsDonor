@@ -42,7 +42,11 @@ class Settings(BaseSettings):
     # BE-6: базовый URL фронтенда — для ссылок на детали в share-посте
     frontend_base_url: str = "https://partshub.local"
 
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="PARTSDONOR_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=("/home/aifactory/PartsDonor/backend/.env", ".env"),
+        env_prefix="PARTSDONOR_",
+        extra="ignore"
+    )
 
 
 settings = Settings()

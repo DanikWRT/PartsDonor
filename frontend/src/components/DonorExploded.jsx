@@ -407,12 +407,12 @@ const ExplodedScheme = React.memo(function ExplodedScheme({ components, onSelect
         <line x1={cx} y1={top - 20} x2={cx} y2={bottom + 10} className="dim-line" />
         <line x1={cx - 4} y1={top - 20} x2={cx + 4} y2={top - 20} className="dim-line" />
         <line x1={cx - 4} y1={bottom + 10} x2={cx + 4} y2={bottom + 10} className="dim-line" />
-        <text className="dim-text" x={cx + 8} y={(top + bottom) / 2} textAnchor="start" transform={`rotate(-90 ${cx + 8} ${(top + bottom) / 2})`}>{(bottom - top)} мм</text>
+        <text className="dim-text" x={cx + 8} y={(top + bottom) / 2} textAnchor="start" transform={`rotate(-90 ${cx + 8} ${(top + bottom) / 2})`}>147.6 мм</text>
         {/* Horizontal width dimension */}
         <line x1={VIEW_W * 0.15} y1={VIEW_H - 8} x2={VIEW_W * 0.85} y2={VIEW_H - 8} className="dim-line" />
         <line x1={VIEW_W * 0.15} y1={VIEW_H - 12} x2={VIEW_W * 0.15} y2={VIEW_H - 4} className="dim-line" />
         <line x1={VIEW_W * 0.85} y1={VIEW_H - 12} x2={VIEW_W * 0.85} y2={VIEW_H - 4} className="dim-line" />
-        <text className="dim-text" x={VIEW_W / 2} y={VIEW_H - 1} textAnchor="middle">{VIEW_W} мм</text>
+        <text className="dim-text" x={VIEW_W / 2} y={VIEW_H - 1} textAnchor="middle">71.6 мм</text>
         {/* Exploded SVG layers — each main node drawn as a genuinely exploded .svg-part */}
       {sorted.map((c, i) => {
           const isSel = c.slot === selectedKey

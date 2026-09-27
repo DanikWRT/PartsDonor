@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { authFetch } from '../auth.jsx'
-import { ExplodedScheme } from '../components/DonorExploded.jsx'
+import { normalizeSlot } from '../components/DonorExploded.jsx'
+import BlueprintExploded from '../components/BlueprintExploded.jsx'
 
+// Экран развёртки донор-лота /donor-lot/:id — 3-колоночный blueprint
+// (эталон ref-iphone16-blueprint-exploded.html). Данные: /api/donor-lots/:id,
+// компоненты уже приходят из InvenTree (5 шт).
 export default function DonorLot() {
   const { id } = useParams()
   const [lot, setLot] = useState(null)
@@ -19,11 +23,6 @@ export default function DonorLot() {
   const [sessionRole, setSessionRole] = useState(null)
 
   useEffect(() => {
-    const raw = localStorage.getItem('pd-session')
-    try {
-      const s = raw ? JSON.parse(raw) : null
-      if (s) { setHasToken(!!s.token); setSessionRole(s.role) }
-    } catch { /* ignore */ }
     const sync = () => {
       try {
         const r = localStorage.getItem('pd-session')
@@ -32,6 +31,7 @@ export default function DonorLot() {
         setSessionRole(s?.role || null)
       } catch { setHasToken(false); setSessionRole(null) }
     }
+    sync()
     window.addEventListener('storage', sync)
     return () => window.removeEventListener('storage', sync)
   }, [])
@@ -64,7 +64,6 @@ export default function DonorLot() {
       }
       const data = await r.json()
       setDealResult(data)
-      // Обновляем статус лота
       setLot((prev) => ({ ...prev, status: 'negotiated' }))
     } catch (e) {
       setDealResult({ kind: 'err', text: e.message })
@@ -91,7 +90,6 @@ export default function DonorLot() {
       setRequestMsg({ kind: 'ok', text: 'Заявка отправлена' })
       setAmount('')
       setMessage('')
-      // Загрузим заявки если продавец
       if (sessionRole === 'seller') loadRequests()
     } catch (e) {
       setRequestMsg({ kind: 'err', text: e.message })
@@ -110,123 +108,84 @@ export default function DonorLot() {
     } catch { /* ignore */ }
   }
 
-  const isSeller = sessionRole === 'seller' && lot.seller_id
+  const isSeller = sessionRole === 'seller' && lot.seller_id && false // (предложения по заявкам — в профиле продавца)
+
+  // Нормализуем слоты в короткие ключи (для чертежа/карточек).
+  const components = (lot.components || []).map((c) => {
+    const slotKey = normalizeSlot(c.slot) || normalizeSlot(c.title) || 'other'
+    return { ...c, slot: slotKey, slotKey, seller_name: null }
+  })
 
   return (
-    <div className="pd-donor-lot-page">
-      <Link to={`/donor-lots`} className="pd-back-link">← Назад к донорам</Link>
-
-      <h2>{lot.brand} {lot.model}</h2>
-
-      <div className="pd-donor-lot-head">
-        <div className="pd-donor-photo pd-donor-photo-hero">
-          <img src={lot.donor_image || '/photos/device-donor.jpg'} alt={`${lot.brand} ${lot.model}`} loading="lazy" />
-        </div>
-        <div className="pd-donor-lot-info">
-          <p className="pd-donor-lot-title">{lot.title}</p>
-          <div className="pd-donor-lot-price">
-            {lot.price_rub.toLocaleString('ru-RU')} ₽
-          </div>
-          <div className="pd-donor-lot-meta">
-            <span>Состояние: {lot.condition}</span>
-            <span>Происхождение: {lot.provenance}</span>
-          </div>
-          <div className="pd-donor-lot-seller">
-            Продавец: {lot.seller_name}
-            {lot.seller_rating != null && ` · Рейтинг: ${lot.seller_rating}`}
-            {lot.seller_verified && ' ✓ Верифицирован'}
-          </div>
-        </div>
-        <div className="pd-donor-lot-exploded">
-          <ExplodedScheme
-            components={lot.components || []}
-            selectedKey={null}
-            onSelect={() => {}}
-            onSelectedKey={() => {}}
-          />
-        </div>
-      </div>
-
-      {/* Кнопка покупки */}
-      {sessionRole === 'buyer' && lot.status !== 'sold' && (
-        <div className="pd-donor-lot-actions">
-          <button
-            type="button"
-            className="pd-btn pd-btn-primary"
-            onClick={handleBuy}
-            disabled={dealLoading}
-          >
-            {dealLoading ? 'Обработка…' : 'Купить целиком'}
-          </button>
-          {dealResult && dealResult.payment && dealResult.payment.confirmation_url && (
-            <a href={dealResult.payment.confirmation_url} className="pd-btn pd-btn-sm" target="_blank" rel="noopener">
-              Перейти к оплате
-            </a>
-          )}
-          {dealResult && dealResult.deal && (
-            <Link to={`/deal/${dealResult.deal.id}`} className="pd-btn pd-btn-sm pd-btn-secondary">
-              Смотреть сделку {dealResult.deal.id.slice(0, 8)}
-            </Link>
-          )}
-          {dealResult && dealResult.kind === 'err' && (
-            <span className="pd-err">{dealResult.text}</span>
-          )}
-        </div>
+    <BlueprintExploded
+      components={components}
+      meta={{
+        brand: lot.brand,
+        model: lot.model,
+        revision: (String(lot.donor_part_id ?? '') || 'A2897'),
+        donorPartId: lot.donor_part_id,
+        explodedUrl: lot.exploded_url,
+      }}
+      back={<Link to="/donor-lots" className="ex-back">← Назад к донорам</Link>}
+      detailExtra={(comp) => (
+        <LotActions
+          lot={lot}
+          comp={comp}
+          sessionRole={sessionRole}
+          hasToken={hasToken}
+          dealLoading={dealLoading}
+          requestLoading={requestLoading}
+          amount={amount}
+          setAmount={setAmount}
+          message={message}
+          setMessage={setMessage}
+          handleBuy={handleBuy}
+          handleRequest={handleRequest}
+          dealResult={dealResult}
+          requestMsg={requestMsg}
+        />
       )}
-      {!hasToken && lot.status !== 'sold' && (
-        <p className="pd-note">Необходим вход для покупки целиком</p>
-      )}
+    />
+  )
+}
 
-      {/* Форма заявки */}
+function LotActions({ lot, comp, sessionRole, hasToken, dealLoading, requestLoading, amount, setAmount, message, setMessage, handleBuy, handleRequest, dealResult, requestMsg }) {
+  const unavailable = lot.status === 'sold'
+  return (
+    <div className="ex-lot-actions">
+      {sessionRole === 'buyer' && !unavailable && (
+        <button
+          type="button"
+          className="ex-btn ex-btn-primary"
+          onClick={handleBuy}
+          disabled={dealLoading}
+        >
+          {dealLoading ? 'Обработка…' : 'Купить целиком'}
+        </button>
+      )}
+      {!hasToken && !unavailable && (
+        <p className="pd-muted">Необходим вход для покупки целиком</p>
+      )}
+      {dealResult && dealResult.payment && dealResult.payment.confirmation_url && (
+        <a href={dealResult.payment.confirmation_url} className="ex-btn" target="_blank" rel="noopener noreferrer">Перейти к оплате</a>
+      )}
+      {dealResult && dealResult.deal && (
+        <Link to={`/deal/${dealResult.deal.id}`} className="ex-btn">Смотреть сделку {dealResult.deal.id.slice(0, 8)}</Link>
+      )}
+      {dealResult && dealResult.kind === 'err' && <p className="ex-err">{dealResult.text}</p>}
+
       {hasToken && (
-        <form className="pd-request-form" onSubmit={handleRequest}>
-          <h3>Оставить заявку / предложение цены</h3>
-          <div className="pd-form-row">
-            <input
-              type="number"
-              className="pd-input"
-              placeholder="Сумма ₽"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              min="1"
-              required
-            />
-            <textarea
-              className="pd-textarea"
-              placeholder="Комментарий к заявке"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-            />
+        <form className="ex-request-form" onSubmit={handleRequest}>
+          <h4>Заявка / предложение цены</h4>
+          <div className="ex-form-row">
+            <input type="number" className="ex-input" placeholder="Сумма ₽" value={amount} onChange={(e) => setAmount(e.target.value)} min="1" required />
+            <input type="text" className="ex-input" placeholder="Комментарий" value={message} onChange={(e) => setMessage(e.target.value)} />
           </div>
-          <button type="submit" className="pd-btn pd-btn-sm" disabled={requestLoading}>
+          <button type="submit" className="ex-btn" disabled={requestLoading}>
             {requestLoading ? 'Отправка…' : 'Отправить заявку'}
           </button>
-          {requestMsg && <p className={`pd-notice ${requestMsg.kind === 'ok' ? 'pd-ok' : 'pd-err'}`}>{requestMsg.text}</p>}
+          {requestMsg && <p className={`ex-notice ${requestMsg.kind === 'ok' ? 'ex-ok' : 'ex-err'}`}>{requestMsg.text}</p>}
         </form>
-      )}
-
-      {/* Заявки продавца */}
-      {isSeller && (
-        <div className="pd-requests-section">
-          <h3>Заявки на донор</h3>
-          <button type="button" className="pd-btn pd-btn-sm pd-btn-secondary" onClick={loadRequests}>
-            Обновить список
-          </button>
-          {requests.length === 0 ? (
-            <p className="pd-muted">Нет заявок.</p>
-          ) : (
-            <ul className="pd-requests-list">
-              {requests.map((req) => (
-                <li key={req.id} className="pd-request-item">
-                  <span>Покупатель: {req.buyer_name || req.buyer_company_id?.slice(0, 8)}</span>
-                  <span>{req.amount_rub} ₽</span>
-                  <span className={`pd-status-badge pd-status-${req.status}`}>{req.status}</span>
-                  <span className="pd-request-msg">{req.message}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
       )}
     </div>
   )

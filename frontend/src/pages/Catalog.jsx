@@ -333,7 +333,6 @@ const DonorCard = React.memo(function DonorCard({ lot }) {
             onClick={(e) => {
               e.stopPropagation()
               if (!canAdd) return
-              if (!canAdd) return
               add({
                 listing_id: lot.listing_id,
                 title: `${lot.brand} ${lot.model} (весь лот)`,

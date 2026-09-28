@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { authFetch } from '../auth.jsx'
 import {
   ExplodedScheme,
@@ -163,42 +163,95 @@ function SpecList({ components, active, onHover, onLeave, onClick }) {
   )
 }
 
+// Состояние детали -> текст спеки с цветовым классом.
+function conditionText(comp) {
+  const unavailable = isUnavailable(comp)
+  if (unavailable) return { text: 'Нет предложений', cls: 'red' }
+  const cond = comp.listing?.condition
+  if (cond === 'passed' || cond === 'tested') return { text: 'Проверено', cls: 'green' }
+  if (cond === 'untested') return { text: 'Не проверено', cls: 'yellow' }
+  if (cond === 'no_guarantee') return { text: 'Без гарантии', cls: 'red' }
+  return { text: 'Новое, оригинал', cls: 'green' }
+}
+
+function warrantyText(comp) {
+  if (isUnavailable(comp)) return '—'
+  if (comp.listing?.warranty === true) return '12 месяцев'
+  if (comp.listing?.warranty === false) return 'Без гарантии'
+  return '—'
+}
+
 // --- Карточка выбранной детали (справа снизу) ---
 function DetailCard({ comp, index }) {
-  if (!comp) {
+  const empty = (
+    <div className="ex-panel-empty" id="panel-empty">
+      <span className="emoji">📐</span>
+      Наведите или кликните на узел<br />в чертеже или в списке
+    </div>
+  )
+  if (!comp) return empty
+
+  const def          = SLOT_DEFS[comp.slot] || { label: comp.title, sn: String(index + 1).padStart(3, '0') }
+  const unavailable  = isUnavailable(comp)
+  const price        = unavailable ? '—' : `${fmt(comp.price_rub)} ₽`
+
+  const sellerName = comp.seller_name ?? comp.listing?.seller_name ?? 'Продавец'
+  const rating = comp.listing?.seller_rating || 0
+  const ratingText = rating ? String(rating).replace('.', ',') : '—'
+
+  // statusNote (аналог «в наличии · 1 шт · Москва» из эталона)
+  let statusNote
+  if (unavailable)          statusNote = 'нет предложений'
+  else if (refStatus(comp) === 'order') statusNote = 'под заказ · уточните цену'
+  else                      statusNote = 'в наличии · 1 шт · Москва'
+
+  const cond = conditionText(comp)
+
+  if (unavailable) {
+    // Деталь недоступна — мутная карточка, всегда реальная (не пустой экран).
     return (
-      <div className="ex-panel-empty" id="panel-empty">
-        <span className="emoji">📐</span>
-        Наведите или кликните на узел<br />в чертеже или в списке
+      <div className="ex-detail-info active">
+        <div className="dp-header">
+          <div className="dp-thumb"><SlotPreview slot={comp.slot} /></div>
+          <div>
+            <div className="dp-title">{def.label}</div>
+            <div className="dp-seller">🏪 {sellerName} · <span className="star">★</span> {ratingText}</div>
+          </div>
+        </div>
+        <div>
+          <div className="dp-price dp-price-muted">{price}</div>
+          <div className="dp-note">{statusNote}</div>
+        </div>
+        <div className="dp-specs">
+          <div className="dp-spec"><span className="k">Черт. №</span><span className="v muted">{def.sn}</span></div>
+          <div className="dp-spec"><span className="k">Состояние</span><span className={`v ${cond.cls}`}>{cond.text}</span></div>
+          <div className="dp-spec"><span className="k">Гарантия</span><span className="v muted">{warrantyText(comp)}</span></div>
+        </div>
       </div>
     )
   }
-  const def = SLOT_DEFS[comp.slot] || { label: comp.title, sn: String(index + 1).padStart(3, '0') }
-  const sCls = refStatus(comp)
-  const unavailable = isUnavailable(comp)
-  const price = unavailable ? '—' : `${fmt(comp.price_rub)} ₽`
+
   return (
     <div className="ex-detail-info active">
       <div className="dp-header">
-        <div className="dp-thumb">
-          <SlotPreview slot={comp.slot} />
-        </div>
+        <div className="dp-thumb"><SlotPreview slot={comp.slot} /></div>
         <div>
           <div className="dp-title">{def.label}</div>
-          <div className="dp-seller">
-            💾 {comp.part_id ? `PN #${comp.part_id}` : '—'}
-          </div>
+          <div className="dp-seller">🏪 {sellerName} · <span className="star">★</span> {ratingText}</div>
         </div>
       </div>
       <div>
-        <div className={`dp-price${unavailable ? ' dp-price-muted' : ''}`}>{price}</div>
-        <div className="dp-note">
-          {unavailable ? 'Редкая позиция · оставьте заявку' : `${statusText(comp.status).toLowerCase()} · ${SLOT_META[comp.slot]?.label || 'узел'}`}
-        </div>
+        <div className="dp-price">{price}</div>
+        <div className="dp-note">{statusNote}</div>
       </div>
       <div className="dp-specs">
         <div className="dp-spec"><span className="k">Черт. №</span><span className="v">{def.sn}</span></div>
-        <div className="dp-spec"><span className="k">Статус</span><span className={`v ${sCls === 'none' ? 'red' : 'green'}`}>{refStatusLabel(comp)}</span></div>
+        <div className="dp-spec"><span className="k">Состояние</span><span className={`v ${cond.cls}`}>{cond.text}</span></div>
+        <div className="dp-spec"><span className="k">Гарантия</span><span className="v">{warrantyText(comp)}</span></div>
+      </div>
+      <div className="dp-actions">
+        <button type="button" className="btn btn-primary">Купить сейчас</button>
+        <button type="button" className="btn">Запросить цену</button>
       </div>
     </div>
   )
@@ -228,6 +281,16 @@ export default function BlueprintExploded({
   const activeKey = hoverSlot || selectedSlot
   const selected = sorted.find((c) => c.slot === activeKey) || null
   const availableCount = sorted.filter((c) => !isUnavailable(c)).length
+
+  // A) DEFAULT SELECT: как только компоненты есть и ничего не выбрано —
+  //    выбираем первый доступный узел (та же сортировка, что в спецификации),
+  //    чтобы правая колонка никогда не была пустой на загрузке.
+  useEffect(() => {
+    if (selectedSlot == null) {
+      const first = sorted.find((c) => !isUnavailable(c))
+      if (first) setSelectedSlot(first.slot)
+    }
+  }, [sorted, selectedSlot])
 
   return (
     <div className="ex-stage">

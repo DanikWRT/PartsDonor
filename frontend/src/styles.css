@@ -4825,3 +4825,52 @@ html, body { overflow-x: hidden; }
     .thumbs-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
     .thumb-preview { height: 110px; }
   }
+
+/* ---- FIX-2: DonorLot / deal action buttons & fields ---- */
+.ex-btn {
+  padding: 9px 18px; border-radius: 10px;
+  border: 1px solid var(--stroke); background: var(--glass); color: var(--text);
+  font-size: 13px; font-weight: 500; cursor: pointer; transition: all .2s;
+  display: inline-flex; align-items: center; gap: 6px; justify-content: center;
+  text-decoration: none; font-family: inherit;
+}
+.ex-btn:hover { background: rgba(255,255,255,.07); border-color: var(--stroke-2); }
+.ex-btn:disabled { opacity: .55; cursor: default; }
+
+.ex-btn-primary {
+  background: linear-gradient(135deg, #4fa3ff, #7cf7d0);
+  border: none; color: #050608; font-weight: 700;
+  box-shadow: 0 8px 24px rgba(79,163,255,.25);
+}
+.ex-btn-primary:hover { box-shadow: 0 12px 32px rgba(79,163,255,.45); transform: translateY(-1px); }
+.ex-btn-primary:disabled { box-shadow: none; transform: none; background: rgba(255,255,255,.12); color: var(--muted); }
+
+.ex-input {
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--stroke); border-radius: 10px;
+  padding: 9px 12px; color: var(--text); font-size: 13px; font-family: inherit;
+  width: 100%; outline: none; box-sizing: border-box;
+}
+.ex-input::placeholder { color: var(--muted); }
+.ex-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,163,255,.15); }
+.ex-input::-webkit-outer-spin-button,
+.ex-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ex-input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+
+.ex-lot-actions { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+
+.ex-request-form {
+  width: 100%; background: var(--glass); border: 1px solid var(--stroke);
+  border-radius: 14px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.ex-request-form h4 { margin: 0; font-size: 14px; color: var(--text); font-weight: 600; }
+
+.ex-form-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.ex-form-row .ex-input { flex: 1; min-width: 120px; }
+.ex-form-row label { color: var(--text-2); }
+
+.ex-notice { padding: 8px 12px; border-radius: 8px; font-size: 12.5px; }
+.ex-ok { color: var(--green); background: rgba(34,197,94,.1); }
+.ex-err { color: var(--red); background: rgba(239,68,68,.1); }
+.pd-muted { color: var(--text-2); font-size: 12.5px; }

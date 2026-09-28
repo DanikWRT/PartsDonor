@@ -16,3 +16,4 @@ frontend/*.log
 # Python
 __pycache__/
 .venv/
+.worktrees/

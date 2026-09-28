@@ -36,6 +36,7 @@ from app.models import (
     UserRole,
     Base,
     BuyerProfile,
+    Blueprint,
     BuyRequest,
     BuyRequestStatus,
     BuyResponseStatus,
@@ -82,6 +83,8 @@ from app.schemas import (
     BuyerProfileOut,
     OneClickDealIn,
     OneClickDealOut,
+    BlueprintIn,
+    BlueprintOut,
     DeviceSchemaIn,
     DeviceSchemaOut,
     DonorComponent,
@@ -911,6 +914,63 @@ async def get_device_schema(schema_id: uuid.UUID, db: AsyncSession = Depends(get
     record = await db.get(DeviceSchema, schema_id)
     if record is None:
         raise HTTPException(status_code=404, detail="DeviceSchema not found")
+    return record
+
+
+# ============================== BLUEPRINTS (BLD-3) ==============================
+
+
+@router.get("/blueprints", response_model=list[BlueprintOut])
+async def list_blueprints(db: AsyncSession = Depends(get_db)) -> list[Blueprint]:
+    return list((await db.execute(select(Blueprint).order_by(Blueprint.created_at.desc()))).scalars().all())
+
+
+@router.post("/blueprints", response_model=BlueprintOut, status_code=201)
+async def create_blueprint(payload: BlueprintIn, db: AsyncSession = Depends(get_db)) -> Blueprint:
+    record = Blueprint(
+        brand=payload.brand,
+        model=payload.model,
+        svg=payload.svg,
+        parts=payload.parts,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
+@router.get("/blueprints/{brand}/{model}", response_model=BlueprintOut)
+async def get_blueprint_by_brand_model(brand: str, model: str, db: AsyncSession = Depends(get_db)) -> Blueprint:
+    norm_brand = brand.strip().lower()
+    norm_model = model.strip().lower()
+    records = list(
+        (
+            await db.execute(
+                select(Blueprint)
+                .where(func.lower(Blueprint.brand) == norm_brand)
+                .where(func.lower(Blueprint.model) == norm_model)
+                .order_by(Blueprint.updated_at.desc())
+            )
+        ).scalars().all()
+    )
+    if not records:
+        raise HTTPException(status_code=404, detail="Blueprint not found")
+    return records[0]
+
+
+@router.put("/blueprints/{blueprint_id}", response_model=BlueprintOut)
+async def update_blueprint(
+    blueprint_id: uuid.UUID, payload: BlueprintIn, db: AsyncSession = Depends(get_db)
+) -> Blueprint:
+    record = await db.get(Blueprint, blueprint_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Blueprint not found")
+    record.brand = payload.brand
+    record.model = payload.model
+    record.svg = payload.svg
+    record.parts = payload.parts
+    await db.commit()
+    await db.refresh(record)
     return record
 
 

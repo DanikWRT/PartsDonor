@@ -167,6 +167,27 @@ class DeviceSchema(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class Blueprint(Base):
+    """BLD-3: схема телефона (blueprint), привязанная к конкретной модели brand+model.
+
+    Отличается от DeviceSchema: хранит полный рисованный SVG-маркер и массив
+    фигур (parts) как первоклассные JSON, а не только hotspots. Создаётся и
+    редактируется в конструкторе (/editor), может использоваться на /donor.
+    """
+
+    __tablename__ = "blueprints"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    brand: Mapped[str] = mapped_column(String(64))
+    model: Mapped[str] = mapped_column(String(128))
+    svg: Mapped[str] = mapped_column(Text, default="")  # полный SVG-маркер (markup)
+    parts: Mapped[list] = mapped_column(JSON, default=list)  # [{id,type,x,y,w,h|cx|cy|r|points,name,key,fill,stroke}, ...]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Listing(Base):
     """Объявление на витрине: конкретная деталь (Part/StockItem InvenTree) на продажу."""
 

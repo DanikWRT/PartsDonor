@@ -62,6 +62,28 @@ class DeviceSchemaOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# --- Blueprint (BLD-3) ---
+
+
+class BlueprintIn(BaseModel):
+    brand: str
+    model: str
+    svg: str = ""
+    parts: list = []
+
+
+class BlueprintOut(BaseModel):
+    id: uuid.UUID
+    brand: str
+    model: str
+    svg: str
+    parts: list
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 # --- Listing ---
 
 

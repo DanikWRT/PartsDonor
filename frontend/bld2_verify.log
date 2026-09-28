@@ -1,0 +1,22 @@
+PASS - editor page title
+PASS - mode toggle renders (2 buttons)
+PASS - schema loaded with 3 figures
+PASS - view mode renders clickable figures
+PASS - each figure has a hit-area
+PASS - display figure is green (not unavailable)
+PASS - green determined automatically (manual fill is blue, view fill transparent)
+PASS - detail card opens
+PASS - card shows status В наличии
+PASS - card shows formatted price (ru-RU)
+PASS - no-key figure is red (unavailable)
+PASS - no-key card shows Нет в наличии
+PASS - no-key card shows price dash
+PASS - hit-area covers whole figure bbox (x,y>=0,w,h>0)
+PASS - halo matches bbox too
+PASS - hover highlights whole area
+PASS - no horizontal overflow at 1440px
+PASS - no horizontal overflow at 390px
+PASS - draw circle in edit mode persists
+PASS - round-trip save ok
+PASS - round-trip reload loads all figures
+ALL_RESULT=PASS

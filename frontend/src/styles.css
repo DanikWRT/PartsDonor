@@ -4975,6 +4975,60 @@ html, body { overflow-x: hidden; }
 }
 .bld-select option { background: #0c1016; color: var(--text); }
 
+/* ===== BLD-2: режим просмотра (view) ===== */
+.bld-mode-toggle {
+  display: flex; gap: 4px; align-items: center;
+  background: var(--glass); border: 1px solid var(--stroke); border-radius: 10px; padding: 4px;
+}
+.bld-mode-btn {
+  border: none; background: transparent; color: var(--text-2); cursor: pointer;
+  font-family: inherit; font-size: 13px; padding: 7px 12px; border-radius: 7px;
+  transition: all .18s; white-space: nowrap;
+}
+.bld-mode-btn:hover { color: var(--text); background: rgba(255,255,255,.05); }
+.bld-mode-btn.is-active { background: rgba(79,163,255,.16); border: 1px solid var(--accent); color: var(--text); }
+
+.bld-view-note { display: flex; flex-direction: column; gap: 10px; }
+.bld-view-legend { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; margin: 0; }
+.bld-view-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.bld-view-dot.is-green { background: #22c55e; }
+.bld-view-dot.is-red { background: #ef4444; }
+
+/* canvas + фигуры в режиме просмотра: курсор-указатель, клик/ховер всей области */
+.bld-canvas.is-view { cursor: default; }
+.bld-view-fig { cursor: pointer; }
+.bld-view-fig .bld-view-halo { pointer-events: none; }
+/* постоянное гало по цвету наличия (авто из каталога, а не палитра) */
+.bld-view-fig:not(.unavailable) .bld-view-halo { fill: rgba(34,197,94,.25); }
+.bld-view-fig.unavailable .bld-view-halo { fill: rgba(239,68,68,.25); }
+/* усиление при ховере всей области */
+.bld-view-fig:not(.unavailable):hover .bld-view-halo { fill: rgba(34,197,94,.45); }
+.bld-view-fig.unavailable:hover .bld-view-halo { fill: rgba(239,68,68,.45); }
+.bld-view-fig.is-selected .bld-view-halo { stroke: #4fa3ff; stroke-width: 1.4; stroke-dasharray: 4 3; }
+/* прозрачная hit-зона на весь bbox */
+.bld-view-fig .bld-view-hitarea { fill: transparent; stroke: none; pointer-events: all; }
+
+/* ---- карточка детали ---- */
+.bld-detail-card {
+  display: flex; flex-direction: column; gap: 10px;
+  background: rgba(5,6,8,.55); border: 1px solid var(--stroke-2); border-radius: 12px; padding: 13px;
+}
+.bld-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bld-detail-title { font-size: 15px; font-weight: 600; color: var(--text); word-break: break-word; }
+.bld-detail-close {
+  border: 1px solid var(--stroke); background: transparent; color: var(--text-2); cursor: pointer;
+  width: 26px; height: 26px; border-radius: 7px; line-height: 1; flex: none;
+}
+.bld-detail-close:hover { background: rgba(239,68,68,.12); color: var(--red); border-color: var(--red); }
+.bld-avail-row { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.bld-avail-row.is-on { color: #22c55e; }
+.bld-avail-row.is-off { color: #ef4444; }
+.bld-avail-dot { width: 11px; height: 11px; border-radius: 50%; background: currentColor; }
+.bld-detail-price { display: flex; flex-direction: column; gap: 3px; }
+.bld-detail-price .pd-label { color: var(--muted); font-size: 11px; }
+.bld-detail-price-val { font-size: 17px; font-weight: 700; color: var(--text); }
+.bld-detail-key { font-size: 11.5px; margin: 0; }
+
 /* ---- adaptive: desktop ⟶ mobile ---- */
 @media (max-width: 900px) {
   .bld-layout { grid-template-columns: 1fr; }
@@ -4990,6 +5044,9 @@ html, body { overflow-x: hidden; }
   .bld-editor { padding: 16px 12px 40px; }
   .bld-layout { gap: 12px; }
   .bld-canvas { max-width: 100%; }
+  .bld-detail-card { padding: 11px; }
+  .bld-detail-price-val { font-size: 15px; }
+  .bld-mode-btn { font-size: 12px; padding: 6px 9px; }
 }
 
 /* ---- Cabinet: BLD-1 editor entry ---- */

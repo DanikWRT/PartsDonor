@@ -190,6 +190,11 @@ export default function BlueprintEditor() {
   const [selectedId, setSelectedId] = useState(null)
   const [activeColor, setActiveColor] = useState('#4fa3ff')
 
+  // BLD-2: режим просмотра (view) — кликабельные фигуры с авто-наличием из каталога.
+  const [mode, setMode] = useState('edit') // 'edit' | 'view'
+  const [viewSelectedId, setViewSelectedId] = useState(null)
+  const [catalogMap, setCatalogMap] = useState({}) // key -> { available, price }
+
   const [brand, setBrand] = useState('')
   const [model, setModel] = useState('')
   const [saving, setSaving] = useState(false)
@@ -200,6 +205,51 @@ export default function BlueprintEditor() {
 
   const svgRef = useRef(null)
   const interactionRef = useRef(null)
+
+  // ---- BLD-2: авто-наличие из /api/catalog (ключ фигуры -> каталог) ----
+  const keyList = useMemo(() => {
+    const s = new Set()
+    figures.forEach((f) => { if (f.key && String(f.key).trim()) s.add(String(f.key).trim()) })
+    return [...s]
+  }, [figures])
+
+  React.useEffect(() => {
+    let cancelled = false
+    const out = {}
+    Promise.all(
+      keyList.map(async (k) => {
+        try {
+          const r = await authFetch('/api/catalog?q=' + encodeURIComponent(k))
+          if (!r.ok) { out[k] = { available: false, price: null }; return }
+          const list = (await r.json()) || []
+          const stock = list.filter((it) => it && it.in_stock === true)
+          out[k] = {
+            available: stock.length > 0,
+            price: stock.length ? stock[0].listing_price : null,
+          }
+        } catch {
+          out[k] = { available: false, price: null }
+        }
+      }),
+    ).then(() => { if (!cancelled) setCatalogMap(out) })
+    return () => { cancelled = true }
+  }, [keyList])
+
+  // Состояние наличия фигуры (авто из каталога; без key — нет данных => нет в наличии).
+  const viewStateOf = (f) => {
+    const k = f && f.key ? String(f.key).trim() : ''
+    if (!k || !catalogMap[k]) return { available: false, price: null }
+    return catalogMap[k]
+  }
+
+  const fmtPrice = (p) => {
+    if (p === null || p === undefined) return '—'
+    try {
+      return new Intl.NumberFormat('ru-RU').format(p) + ' ₽'
+    } catch {
+      return String(p) + ' ₽'
+    }
+  }
 
   const selected = useMemo(
     () => figures.find((f) => f.id === selectedId) || null,
@@ -248,7 +298,7 @@ export default function BlueprintEditor() {
 
   // ---- pointer handlers ----
   const onPointerDown = (e) => {
-    if (e.button !== 0) return
+    if (e.button !== 0 || mode === 'view') return
     const p = svgPoint(e)
     e.currentTarget.setPointerCapture(e.pointerId)
 
@@ -287,6 +337,7 @@ export default function BlueprintEditor() {
   }
 
   const onPointerMove = (e) => {
+    if (mode === 'view') return
     const ia = interactionRef.current
     if (!ia) return
     const p = svgPoint(e)
@@ -309,6 +360,7 @@ export default function BlueprintEditor() {
   }
 
   const onPointerUp = (e) => {
+    if (mode === 'view') return
     const ia = interactionRef.current
     if (!ia) return
     if (ia.kind === 'draw') {
@@ -416,6 +468,8 @@ export default function BlueprintEditor() {
   }
 
   const selBox = selected ? bbox(selected) : null
+  const viewSelected = mode === 'view' ? figures.find((f) => f.id === viewSelectedId) || null : null
+  const viewSelState = viewSelected ? viewStateOf(viewSelected) : null
 
   return (
     <div className="bld-editor">
@@ -424,53 +478,70 @@ export default function BlueprintEditor() {
           <h1 className="bld-title">Конструктор схемы</h1>
           <p className="bld-sub">Нарисуйте схему устройства, задайте частям названия и ключи, сохраните.</p>
         </div>
+        <div className="bld-mode-toggle" role="group" aria-label="Режим">
+          <button type="button" className={`bld-mode-btn${mode === 'edit' ? ' is-active' : ''}`} onClick={() => setMode('edit')}>✏️ Редактирование</button>
+          <button type="button" className={`bld-mode-btn${mode === 'view' ? ' is-active' : ''}`} onClick={() => setMode('view')}>👁 Просмотр</button>
+        </div>
         <button type="button" className="btn btn-ghost btn-sm" onClick={clearCanvas}>Очистить холст</button>
       </div>
 
       <div className="bld-layout">
         {/* ------- Toolbar ------- */}
         <aside className="bld-toolbar" aria-label="Инструменты">
-          <span className="bld-toolbar-label">Инструменты</span>
-          <div className="bld-tools">
-            {TOOLS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`bld-tool${tool === t.id ? ' is-active' : ''}`}
-                title={t.label}
-                onClick={() => setTool(t.id)}
-              >
-                <span className="bld-tool-icon">{t.icon}</span>
-                <span className="bld-tool-name">{t.label}</span>
-              </button>
-            ))}
-          </div>
+          {mode === 'edit' ? (
+            <>
+              <span className="bld-toolbar-label">Инструменты</span>
+              <div className="bld-tools">
+                {TOOLS.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`bld-tool${tool === t.id ? ' is-active' : ''}`}
+                    title={t.label}
+                    onClick={() => setTool(t.id)}
+                  >
+                    <span className="bld-tool-icon">{t.icon}</span>
+                    <span className="bld-tool-name">{t.label}</span>
+                  </button>
+                ))}
+              </div>
 
-          <span className="bld-toolbar-label">Цвет / наличие</span>
-          <div className="bld-palette">
-            {PALETTE.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className={`bld-swatch${activeColor === c ? ' is-active' : ''}`}
-                style={{ background: c }}
-                title={c}
-                onClick={() => pickColor(c)}
-                aria-label={`Цвет ${c}`}
-              />
-            ))}
-          </div>
-          <p className="bld-palette-hint">
-            <span className="dot" style={{ background: '#22c55e' }} /> в наличии
-            <span className="dot" style={{ background: '#ef4444' }} /> нет в наличии
-          </p>
+              <span className="bld-toolbar-label">Цвет / наличие</span>
+              <div className="bld-palette">
+                {PALETTE.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={`bld-swatch${activeColor === c ? ' is-active' : ''}`}
+                    style={{ background: c }}
+                    title={c}
+                    onClick={() => pickColor(c)}
+                    aria-label={`Цвет ${c}`}
+                  />
+                ))}
+              </div>
+              <p className="bld-palette-hint">
+                <span className="dot" style={{ background: '#22c55e' }} /> в наличии
+                <span className="dot" style={{ background: '#ef4444' }} /> нет в наличии
+              </p>
+            </>
+          ) : (
+            <div className="bld-view-note">
+              <span className="bld-toolbar-label">Режим просмотра</span>
+              <p className="bld-muted">Нажмите на деталь, чтобы увидеть карточку. Наличие и цена определяются автоматически по каталогу.</p>
+              <p className="bld-view-legend">
+                <span className="bld-view-dot is-green" /> в наличии
+                <span className="bld-view-dot is-red" /> нет в наличии
+              </p>
+            </div>
+          )}
         </aside>
 
         {/* ------- Canvas ------- */}
         <div className="bld-canvas-wrap">
           <svg
             ref={svgRef}
-            className={`bld-canvas tool-${tool}`}
+            className={`bld-canvas${mode === 'view' ? ' is-view' : ''} tool-${tool}`}
             viewBox={`0 0 ${VB_W} ${VB_H}`}
             role="img"
             aria-label="Холст схемы"
@@ -490,14 +561,41 @@ export default function BlueprintEditor() {
             <rect x="24" y="58" width="292" height="548" rx="8" fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="1" />
             <circle cx="170" cy="40" r="7" fill="none" stroke="#2a3348" strokeWidth="2" />
 
-            {figures.map((f) => {
-              const el = shapeEl(f, false)
-              return React.cloneElement(el, { className: f.id === selectedId ? 'bld-fig is-selected' : 'bld-fig' })
-            })}
-            {draft && <g className="bld-fig bld-draft" pointerEvents="none">{shapeEl(draft, true)}</g>}
+            {mode === 'view'
+              ? figures.map((f) => {
+                  const b = bbox(f)
+                  const st = viewStateOf(f)
+                  const avail = st.available
+                  const col = avail ? '#22c55e' : '#ef4444'
+                  const el = shapeEl(f, true)
+                  const name = f.name || f.key || 'Деталь'
+                  return (
+                    <g
+                      key={f.id}
+                      className={`bld-view-fig${avail ? '' : ' unavailable'}${viewSelectedId === f.id ? ' is-selected' : ''}`}
+                      data-fig={f.id}
+                      onClick={() => setViewSelectedId(f.id)}
+                    >
+                      {React.cloneElement(el, { fill: 'transparent', stroke: col })}
+                      {/* постоянное гало-подсветка всего bbox по цвету наличия */}
+                      <rect className="bld-view-halo" x={b.x} y={b.y} width={b.w} height={b.h} />
+                      {/* прозрачная hit-зона на весь bbox (клик/ховер всей области) */}
+                      <rect className="bld-view-hitarea" x={b.x} y={b.y} width={b.w} height={b.h} data-name={name} />
+                    </g>
+                  )
+                })
+              : (
+                <>
+                  {figures.map((f) => {
+                    const el = shapeEl(f, false)
+                    return React.cloneElement(el, { className: f.id === selectedId ? 'bld-fig is-selected' : 'bld-fig' })
+                  })}
+                  {draft && <g className="bld-fig bld-draft" pointerEvents="none">{shapeEl(draft, true)}</g>}
+                </>
+              )}
 
-            {/* выделение + resize-маркер */}
-            {selBox && (
+            {/* выделение + resize-маркер (только в режиме редактирования) */}
+            {mode === 'edit' && selBox && (
               <g className="bld-sel" pointerEvents="none">
                 <rect
                   x={selBox.x - 3} y={selBox.y - 3}
@@ -517,52 +615,81 @@ export default function BlueprintEditor() {
 
         {/* ------- Properties + Save ------- */}
         <aside className="bld-panel" aria-label="Свойства и сохранение">
-          <span className="bld-toolbar-label">Свойства фигуры</span>
-          {selected ? (
-            <div className="bld-props">
-              <label className="pd-field">
-                <span className="pd-label">Название</span>
-                <input className="pd-input" value={selected.name || ''} placeholder="напр. Экран"
-                  onChange={(e) => patchSelected({ name: e.target.value })} />
-              </label>
-              <label className="pd-field">
-                <span className="pd-label">Key-идентификатор</span>
-                <input className="pd-input" value={selected.key || ''} placeholder="напр. display"
-                  onChange={(e) => patchSelected({ key: e.target.value })} />
-              </label>
-              <div className="bld-props-row">
-                <span className="pd-label">Цвет</span>
-                <span className="bld-swatch-mini" style={{ background: selected.fill || '#4fa3ff' }} />
-              </div>
-              <button type="button" className="btn btn-ghost btn-sm bld-del" onClick={deleteSelected}>Удалить фигуру</button>
-            </div>
+          {mode === 'edit' ? (
+            <>
+              <span className="bld-toolbar-label">Свойства фигуры</span>
+              {selected ? (
+                <div className="bld-props">
+                  <label className="pd-field">
+                    <span className="pd-label">Название</span>
+                    <input className="pd-input" value={selected.name || ''} placeholder="напр. Экран"
+                      onChange={(e) => patchSelected({ name: e.target.value })} />
+                  </label>
+                  <label className="pd-field">
+                    <span className="pd-label">Key-идентификатор</span>
+                    <input className="pd-input" value={selected.key || ''} placeholder="напр. display"
+                      onChange={(e) => patchSelected({ key: e.target.value })} />
+                  </label>
+                  <div className="bld-props-row">
+                    <span className="pd-label">Цвет</span>
+                    <span className="bld-swatch-mini" style={{ background: selected.fill || '#4fa3ff' }} />
+                  </div>
+                  <button type="button" className="btn btn-ghost btn-sm bld-del" onClick={deleteSelected}>Удалить фигуру</button>
+                </div>
+              ) : (
+                <p className="bld-muted">Выберите фигуру инструментом «Выбор».</p>
+              )}
+
+              <hr className="bld-hr" />
+
+              <span className="bld-toolbar-label">Сохранение схемы</span>
+              <form className="bld-save-form" onSubmit={save}>
+                <div className="bld-save-grid">
+                  <label className="pd-field">
+                    <span className="pd-label">Бренд</span>
+                    <input className="pd-input" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Apple" />
+                  </label>
+                  <label className="pd-field">
+                    <span className="pd-label">Модель</span>
+                    <input className="pd-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="iPhone X" />
+                  </label>
+                </div>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Сохранение…' : '💾 Сохранить схему'}
+                </button>
+              </form>
+              {saveMsg && (
+                <p className={saveMsg.type === 'ok' ? 'bld-msg ok' : 'bld-msg err'} role="status">{saveMsg.text}</p>
+              )}
+
+              <hr className="bld-hr" />
+            </>
           ) : (
-            <p className="bld-muted">Выберите фигуру инструментом «Выбор».</p>
+            <>
+              <span className="bld-toolbar-label">Карточка детали</span>
+              {viewSelected ? (
+                <div className="bld-detail-card">
+                  <div className="bld-detail-head">
+                    <div className="bld-detail-title">{viewSelected.name || viewSelected.key || 'Деталь'}</div>
+                    <button type="button" className="bld-detail-close" aria-label="Закрыть" onClick={() => setViewSelectedId(null)}>✕</button>
+                  </div>
+                  <div className={`bld-avail-row${viewSelState?.available ? ' is-on' : ' is-off'}`}>
+                    <span className="bld-avail-dot" />
+                    <span className="bld-avail-text">{viewSelState?.available ? 'В наличии' : 'Нет в наличии'}</span>
+                  </div>
+                  <div className="bld-detail-price">
+                    <span className="pd-label">Цена</span>
+                    <span className="bld-detail-price-val">{fmtPrice(viewSelState?.price ?? null)}</span>
+                  </div>
+                  <p className="bld-muted bld-detail-key">Key: {viewSelected.key || '—'}</p>
+                </div>
+              ) : (
+                <p className="bld-muted">Нажмите на деталь на схеме, чтобы открыть карточку.</p>
+              )}
+
+              <hr className="bld-hr" />
+            </>
           )}
-
-          <hr className="bld-hr" />
-
-          <span className="bld-toolbar-label">Сохранение схемы</span>
-          <form className="bld-save-form" onSubmit={save}>
-            <div className="bld-save-grid">
-              <label className="pd-field">
-                <span className="pd-label">Бренд</span>
-                <input className="pd-input" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Apple" />
-              </label>
-              <label className="pd-field">
-                <span className="pd-label">Модель</span>
-                <input className="pd-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="iPhone X" />
-              </label>
-            </div>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Сохранение…' : '💾 Сохранить схему'}
-            </button>
-          </form>
-          {saveMsg && (
-            <p className={saveMsg.type === 'ok' ? 'bld-msg ok' : 'bld-msg err'} role="status">{saveMsg.text}</p>
-          )}
-
-          <hr className="bld-hr" />
 
           <span className="bld-toolbar-label">Загрузить</span>
           <div className="bld-load-row">

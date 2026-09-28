@@ -20,6 +20,7 @@ const Kb = React.lazy(() => import('./pages/Kb.jsx'))
 const Storefront = React.lazy(() => import('./pages/Storefront.jsx'))
 const DonorWizard = React.lazy(() => import('./pages/DonorWizard.jsx'))
 const Master = React.lazy(() => import('./pages/Master.jsx'))
+const BlueprintEditor = React.lazy(() => import('./pages/BlueprintEditor.jsx'))
 const AuthPage = React.lazy(() => import('./pages/Auth.jsx'))
 
 function RouteFallback() {
@@ -59,6 +60,7 @@ function HeaderNav({ onCartOpen }) {
         <NavLink to="/chats">Сообщения</NavLink>
         <NavLink to="/storefront">Витрина</NavLink>
         <NavLink to="/masters">Мастера</NavLink>
+        <NavLink to="/editor">Конструктор</NavLink>
         <NavLink to="/donor/new">Добавить донора</NavLink>
         <button type="button" className="cart-btn" onClick={onCartOpen} aria-label="Корзина">🛒 {count}</button>
         {session ? (
@@ -83,8 +85,9 @@ function AppInner() {
   const isWizard = pathname.startsWith('/donor/new')
   const isChat = pathname === '/chats' || pathname.startsWith('/chat/')
   const isKb = pathname === '/kb' || pathname.startsWith('/kb/')
+  const isEditor = pathname === '/editor'
   return (
-    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}${isWizard ? ' pd-app-wizard' : ''}${isChat ? ' pd-app-chat' : ''}${isKb ? ' pd-app-kb' : ''}`}>
+    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}${isWizard ? ' pd-app-wizard' : ''}${isChat ? ' pd-app-chat' : ''}${isKb ? ' pd-app-kb' : ''}${isEditor ? ' pd-app-editor' : ''}`}>
       <HeaderNav onCartOpen={() => setCartOpen(true)} />
       <main className="pd-main">
         <React.Suspense fallback={<RouteFallback />}>
@@ -107,6 +110,7 @@ function AppInner() {
           <Route path="/masters" element={<Master />} />
           <Route path="/master/:companyId" element={<Master />} />
           <Route path="/donor/new" element={<DonorWizard />} />
+          <Route path="/editor" element={<BlueprintEditor />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />
         </Routes>

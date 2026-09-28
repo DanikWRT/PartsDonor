@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { authFetch } from '../auth.jsx'
 
 // ============================ Лейблы (RU) ============================
@@ -253,7 +253,10 @@ export default function Cabinet() {
 
   return (
     <div className="pd-cabinet">
-      <h2>Кабинет продавца</h2>
+      <div className="pd-cabinet-head">
+        <h2>Кабинет продавца</h2>
+        <NavLink to="/editor" className="btn btn-sm btn-primary">🧰 Конструктор схем</NavLink>
+      </div>
 
       {/* 1. Сводка */}
       <section aria-label="Сводка">

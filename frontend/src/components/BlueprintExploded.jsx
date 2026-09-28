@@ -580,6 +580,7 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
             <line x1="185" y1="36" x2="185" y2="42" className="sketch-line-thin"/>
             <line x1="195" y1="36" x2="195" y2="42" className="sketch-line-thin"/>
             <line x1="205" y1="36" x2="205" y2="42" className="sketch-line-thin"/>
+            <rect className="part-hit-area" x="126" y="30" width="88" height="18"/>
           </g>
 
           {/* ПЛАТА */}
@@ -600,6 +601,7 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
             <path d="M 44 195 L 140 195" className="sketch-line-dash"/>
             <circle cx="140" cy="160" r="3" className="sketch-line-thin"/>
             <circle cx="140" cy="172" r="3" className="sketch-line-thin"/>
+            <rect className="part-hit-area" x="36" y="56" width="118" height="188"/>
           </g>
 
           {/* КАМЕРА */}
@@ -619,6 +621,7 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
             <circle className="sketch-line-thin" cx="214" cy="142" r="7"/>
             <circle className="sketch-line-thin" cx="262" cy="142" r="9"/>
             <circle cx="262" cy="142" r="4" className="sketch-hatch-dense"/>
+            <rect className="part-hit-area" x="176" y="56" width="126" height="126"/>
           </g>
 
           {/* АККУМУЛЯТОР */}
@@ -640,6 +643,7 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
             <line x1="290" y1="340" x2="300" y2="340" className="sketch-line-thin"/>
             <rect x="54" y="420" width="70" height="20" className="sketch-line-thin"/>
             <rect x="57" y="423" width="30" height="14" className="sketch-hatch-dense"/>
+            <rect className="part-hit-area" x="36" y="276" width="268" height="188"/>
           </g>
 
           {/* ДИНАМИК SPEAKER */}
@@ -651,6 +655,7 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
             <circle className="sketch-line-thin" cx="100" cy="525" r="14"/>
             <circle className="sketch-line-thin" cx="100" cy="525" r="8"/>
             <circle cx="100" cy="525" r="3" className="sketch-hatch-dense"/>
+            <rect className="part-hit-area" x="36" y="486" width="128" height="78"/>
           </g>
 
           {/* БУЗЕР */}
@@ -660,6 +665,7 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
             <circle className="sketch-line-thin" cx="210" cy="525" r="18"/>
             <circle className="sketch-line-thin" cx="210" cy="525" r="10"/>
             <circle cx="210" cy="525" r="4" className="sketch-hatch-dense"/>
+            <rect className="part-hit-area" x="176" y="486" width="68" height="78"/>
           </g>
 
           {/* MAGSAFE */}
@@ -671,24 +677,29 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
             <circle className="sketch-line-thin" cx="274" cy="525" r="10"/>
             <circle className="sketch-line-thin" cx="274" cy="525" r="5"/>
             <circle cx="274" cy="525" r="2" className="sketch-hatch-dense"/>
+            <rect className="part-hit-area" x="244" y="486" width="60" height="78"/>
           </g>
 
           {/* КНОПКИ НА КОРПУСЕ */}
           <g className="svg-part unavailable" data-part="btn-action">
             <rect x="16" y="180" width="6" height="24" rx="1" className="sketch-line"/>
             <rect x="16" y="180" width="6" height="24" rx="1" fill="url(#hatch-dense)" opacity=".4"/>
+            <rect className="part-hit-area" x="10" y="170" width="18" height="44"/>
           </g>
           <g className="svg-part unavailable" data-part="btn-vol-up">
             <rect x="16" y="225" width="6" height="40" rx="1" className="sketch-line"/>
             <rect x="16" y="225" width="6" height="40" rx="1" fill="url(#hatch-dense)" opacity=".4"/>
+            <rect className="part-hit-area" x="10" y="215" width="18" height="60"/>
           </g>
           <g className="svg-part unavailable" data-part="btn-vol-down">
             <rect x="16" y="280" width="6" height="40" rx="1" className="sketch-line"/>
             <rect x="16" y="280" width="6" height="40" rx="1" fill="url(#hatch-dense)" opacity=".4"/>
+            <rect className="part-hit-area" x="10" y="270" width="18" height="60"/>
           </g>
           <g className="svg-part unavailable" data-part="btn-power">
             <rect x="318" y="240" width="6" height="70" rx="1" className="sketch-line"/>
             <rect x="318" y="240" width="6" height="70" rx="1" fill="url(#hatch-dense)" opacity=".4"/>
+            <rect className="part-hit-area" x="308" y="230" width="26" height="90"/>
           </g>
 
           {/* МИКРОФОНЫ */}
@@ -700,9 +711,11 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
             <circle cx="108" cy="600" r="3" className="sketch-line-thin"/>
             <circle cx="120" cy="600" r="3" className="sketch-line-thin"/>
             <circle cx="132" cy="600" r="3" className="sketch-line-thin"/>
+            <rect className="part-hit-area" x="48" y="588" width="96" height="24"/>
           </g>
           <g className="svg-part unavailable" data-part="mic-top">
             <circle cx="220" cy="39" r="2.5" className="sketch-line-thin"/>
+            <rect className="part-hit-area" x="210" y="29" width="20" height="20"/>
           </g>
 
           {/* ШЛЕЙФ ЗАРЯДКИ */}
@@ -721,6 +734,7 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
             <line x1="247" y1="632" x2="259" y2="632" className="sketch-line-thin"/>
             <line x1="247" y1="636" x2="259" y2="636" className="sketch-line-thin"/>
             <line x1="247" y1="640" x2="259" y2="640" className="sketch-line-thin"/>
+            <rect className="part-hit-area" x="22" y="612" width="250" height="46"/>
           </g>
 
           {/* РАЗМЕРНЫЕ ЛИНИИ */}

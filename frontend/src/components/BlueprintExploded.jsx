@@ -9,6 +9,14 @@ const SLOT_TO_PART = {
   'mic-bottom': 'mic-bottom',
 }
 
+// Вспомогательные узлы чертежа -> канонические ключи карточек
+const DRAW_PART_MAP = {
+  'speaker-top': 'speaker',
+  'mic-top': 'mic-bottom',
+  'btn-action': 'btn-vol-up',
+  'btn-vol-down': 'btn-vol-up',
+}
+
 export default function BlueprintExploded({ components = [], meta = {}, back, detailExtra }) {
   const [selectedPart, setSelectedPart] = useState('screen')
   const [hoveredPart, setHoveredPart] = useState(null)
@@ -29,6 +37,19 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
   const fmt = (n) => (n || 0).toLocaleString('ru-RU') + ' ₽'
   const modelName = (meta.model || 'iPhone 16').replace(/-/g, ' ')
   const hasComp = (key) => { const c = compByPart[key]; return !!c && c.status !== 'sold' && c.status !== 'hidden' }
+  const detailPrice = (() => {
+    const cur = compByPart[activePart] || compByPart['screen']
+    const avail = cur && cur.status !== 'sold' && cur.status !== 'hidden'
+    if (!avail || !cur) return '—'
+    return fmt(cur.price_rub)
+  })()
+  const detailNote = (() => {
+    const cur = compByPart[activePart] || compByPart['screen']
+    const avail = cur && cur.status !== 'sold' && cur.status !== 'hidden'
+    if (!avail || !cur) return 'нет предложений'
+    return 'в наличии · 1 шт · Москва'
+  })()
+
 
   // ===== СТАТИЧЕСКИЕ ДАННЫЕ ИЗ РЕФЕРЕНСА (SVG превью + имена) =====
   const THUMBS = [
@@ -255,8 +276,8 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
           </div>
         </div>
         <div>
-          <div className="dp-price">45 000 ₽</div>
-          <div className="dp-note">в наличии · 1 шт · Москва</div>
+          <div className="dp-price">{detailPrice}</div>
+          <div className="dp-note">{detailNote}</div>
         </div>
         <div className="dp-specs">
           <div className="dp-spec"><span className="k">Черт. №</span><span className="v">001</span></div>
@@ -279,8 +300,8 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
           </div>
         </div>
         <div>
-          <div className="dp-price">4 500 ₽</div>
-          <div className="dp-note">в наличии · 3 шт · Москва</div>
+          <div className="dp-price">{detailPrice}</div>
+          <div className="dp-note">{detailNote}</div>
         </div>
         <div className="dp-specs">
           <div className="dp-spec"><span className="k">Черт. №</span><span className="v">002</span></div>
@@ -303,8 +324,8 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
           </div>
         </div>
         <div>
-          <div className="dp-price">12 800 ₽</div>
-          <div className="dp-note">донор · 2 шт · СПб</div>
+          <div className="dp-price">{detailPrice}</div>
+          <div className="dp-note">{detailNote}</div>
         </div>
         <div className="dp-specs">
           <div className="dp-spec"><span className="k">Черт. №</span><span className="v">003</span></div>
@@ -327,8 +348,8 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
           </div>
         </div>
         <div>
-          <div className="dp-price">2 100 ₽</div>
-          <div className="dp-note">донор · 4 шт · Москва</div>
+          <div className="dp-price">{detailPrice}</div>
+          <div className="dp-note">{detailNote}</div>
         </div>
         <div className="dp-specs">
           <div className="dp-spec"><span className="k">Черт. №</span><span className="v">004</span></div>
@@ -351,8 +372,8 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
           </div>
         </div>
         <div>
-          <div className="dp-price">1 200 ₽</div>
-          <div className="dp-note">под заказ · 3-5 дней</div>
+          <div className="dp-price">{detailPrice}</div>
+          <div className="dp-note">{detailNote}</div>
         </div>
         <div className="dp-specs">
           <div className="dp-spec"><span className="k">Черт. №</span><span className="v">005</span></div>
@@ -375,8 +396,8 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
           </div>
         </div>
         <div>
-          <div className="dp-price" style={{background: "none", WebkitTextFillColor: "var(--muted)", color: "var(--muted)"}}>—</div>
-          <div className="dp-note">Редкая позиция · оставьте заявку</div>
+          <div className="dp-price">{detailPrice}</div>
+          <div className="dp-note">{detailNote}</div>
         </div>
         <div className="dp-specs">
           <div className="dp-spec"><span className="k">Черт. №</span><span className="v">006</span></div>
@@ -398,8 +419,8 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
           </div>
         </div>
         <div>
-          <div className="dp-price" style={{background: "none", WebkitTextFillColor: "var(--muted)", color: "var(--muted)"}}>—</div>
-          <div className="dp-note">Нижний основной динамик</div>
+          <div className="dp-price">{detailPrice}</div>
+          <div className="dp-note">{detailNote}</div>
         </div>
         <div className="dp-specs">
           <div className="dp-spec"><span className="k">Черт. №</span><span className="v">007</span></div>
@@ -421,8 +442,8 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
           </div>
         </div>
         <div>
-          <div className="dp-price" style={{background: "none", WebkitTextFillColor: "var(--muted)", color: "var(--muted)"}}>—</div>
-          <div className="dp-note">Вспомогательный динамик</div>
+          <div className="dp-price">{detailPrice}</div>
+          <div className="dp-note">{detailNote}</div>
         </div>
         <div className="dp-specs">
           <div className="dp-spec"><span className="k">Черт. №</span><span className="v">008</span></div>
@@ -444,8 +465,8 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
           </div>
         </div>
         <div>
-          <div className="dp-price" style={{background: "none", WebkitTextFillColor: "var(--muted)", color: "var(--muted)"}}>—</div>
-          <div className="dp-note">Шлейф с кнопкой включения</div>
+          <div className="dp-price">{detailPrice}</div>
+          <div className="dp-note">{detailNote}</div>
         </div>
         <div className="dp-specs">
           <div className="dp-spec"><span className="k">Черт. №</span><span className="v">009</span></div>
@@ -467,8 +488,8 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
           </div>
         </div>
         <div>
-          <div className="dp-price" style={{background: "none", WebkitTextFillColor: "var(--muted)", color: "var(--muted)"}}>—</div>
-          <div className="dp-note">3 кнопки: Action, Vol+, Vol−</div>
+          <div className="dp-price">{detailPrice}</div>
+          <div className="dp-note">{detailNote}</div>
         </div>
         <div className="dp-specs">
           <div className="dp-spec"><span className="k">Черт. №</span><span className="v">010</span></div>
@@ -490,8 +511,8 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
           </div>
         </div>
         <div>
-          <div className="dp-price" style={{background: "none", WebkitTextFillColor: "var(--muted)", color: "var(--muted)"}}>—</div>
-          <div className="dp-note">Разговорный микрофон</div>
+          <div className="dp-price">{detailPrice}</div>
+          <div className="dp-note">{detailNote}</div>
         </div>
         <div className="dp-specs">
           <div className="dp-spec"><span className="k">Черт. №</span><span className="v">011</span></div>
@@ -513,8 +534,8 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
           </div>
         </div>
         <div>
-          <div className="dp-price" style={{background: "none", WebkitTextFillColor: "var(--muted)", color: "var(--muted)"}}>—</div>
-          <div className="dp-note">Цвет PRODUCT(RED)</div>
+          <div className="dp-price">{detailPrice}</div>
+          <div className="dp-note">{detailNote}</div>
         </div>
         <div className="dp-specs">
           <div className="dp-spec"><span className="k">Черт. №</span><span className="v">012</span></div>
@@ -759,7 +780,23 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
                 № 001-16
               </div>
             </div>
-            <div className="phone-drawing">{phoneSvg}</div>
+            <div className="phone-drawing"
+              onClickCapture={(e) => {
+                const p = e.target.closest('.svg-part');
+                if (p?.dataset?.part) {
+                  const k = DRAW_PART_MAP[p.dataset.part] || p.dataset.part;
+                  setSelectedPart(k);
+                }
+              }}
+              onMouseOverCapture={(e) => {
+                const p = e.target.closest('.svg-part');
+                if (p?.dataset?.part) {
+                  const k = DRAW_PART_MAP[p.dataset.part] || p.dataset.part;
+                  setHoveredPart(k);
+                }
+              }}
+              onMouseLeave={() => setHoveredPart(null)}
+            >{phoneSvg}</div>
           </div>
           <div className="phone-controls">
             <button className="ctrl-btn" title="Повернуть">⟲</button>
@@ -790,6 +827,7 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
                 return (
                   <div
                     key={t.key}
+                    data-part={t.key}
                     className={`thumb ${isActive ? 'active' : ''} ${avail ? '' : 'unavailable'}`}
                     onMouseEnter={() => setHoveredPart(t.key)}
                     onMouseLeave={() => setHoveredPart(null)}
@@ -823,7 +861,7 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
                 const c = compByPart[t.key]
                 const isActive = activePart === t.key
                 return (
-                  <div key={t.key} className={`pl-item ${isActive ? 'active' : ''} ${avail ? '' : 'unavailable'}`} onClick={() => setSelectedPart(t.key)}>
+                  <div key={t.key} data-part={t.key} className={`pl-item ${isActive ? 'active' : ''} ${avail ? '' : 'unavailable'}`} onClick={() => setSelectedPart(t.key)}>
                     <span className={`pl-dot ${avail ? 'green' : 'red'}`}></span>
                     <span className="pl-name">{t.name}</span>
                     <span className="pl-price">{avail ? fmt(c.price_rub) : '—'}</span>
@@ -849,6 +887,7 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
                 return (
                   <div
                     key={s.key}
+                    data-part={s.key}
                     className={`pl-item ${isActive ? 'active' : ''} ${avail ? '' : 'unavailable'}`}
                     onMouseEnter={() => setHoveredPart(s.key)}
                     onMouseLeave={() => setHoveredPart(null)}

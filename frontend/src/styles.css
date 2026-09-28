@@ -4440,7 +4440,7 @@ html, body { overflow-x: hidden; }
   .ctrl-divider { width: 1px; height: 20px; background: var(--stroke); margin: 0 4px; }
 
   /* ============ КАРТОЧКИ ============ */
-  .parts-canvas { position: relative; min-height: 600px; }
+  .parts-canvas { position: relative; min-height: 600px; padding-bottom: 140px; }
   .canvas-title {
     display: flex; justify-content: space-between; align-items: center;
     margin-bottom: 16px;

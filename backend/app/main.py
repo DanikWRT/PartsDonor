@@ -941,21 +941,18 @@ async def create_blueprint(payload: BlueprintIn, db: AsyncSession = Depends(get_
 
 @router.get("/blueprints/{brand}/{model}", response_model=BlueprintOut)
 async def get_blueprint_by_brand_model(brand: str, model: str, db: AsyncSession = Depends(get_db)) -> Blueprint:
-    norm_brand = brand.strip().lower()
-    norm_model = model.strip().lower()
-    records = list(
-        (
-            await db.execute(
-                select(Blueprint)
-                .where(func.lower(Blueprint.brand) == norm_brand)
-                .where(func.lower(Blueprint.model) == norm_model)
-                .order_by(Blueprint.updated_at.desc())
-            )
-        ).scalars().all()
-    )
-    if not records:
-        raise HTTPException(status_code=404, detail="Blueprint not found")
-    return records[0]
+    # Нормализуем ВХОДЯЩИЕ brand/model (slug-форма 'iPhone-13-Pro', display 'iPhone 13 Pro',
+    # регистр) и СРАВНИВАЕМ с нормализованными значениями колонок -> case/hyphen/space-индифферентно.
+    def norm(s: str) -> str:
+        return ' '.join((s or '').strip().lower().replace('-', ' ').split())
+
+    nb = norm(brand)
+    nm = norm(model)
+    records = list((await db.execute(select(Blueprint).order_by(Blueprint.updated_at.desc()))).scalars().all())
+    for r in records:
+        if norm(r.brand) == nb and norm(r.model) == nm:
+            return r
+    raise HTTPException(status_code=404, detail="Blueprint not found")
 
 
 @router.put("/blueprints/{blueprint_id}", response_model=BlueprintOut)

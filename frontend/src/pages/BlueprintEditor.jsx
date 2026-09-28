@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { authFetch } from '../auth.jsx'
 
 // =============================================================================
@@ -183,12 +184,26 @@ function buildHotspots(figures) {
 }
 
 // =============================================================================
+// BLD-3: связка схемы с моделью (brand+model) + редактирование существующих.
+//  • BRAND/MODEL dropdown'ы из каталога моделей доноров (/api/donor-lots) с
+//    фолбэком на ручной ввод, если каталог пуст/недоступен.
+//  • Роут /editor/:brand/:model — предзаполняет brand/model и загружает
+//    существующий blueprint через GET /api/blueprints/{brand}/{model}.
+//  • Сохранение: PUT /api/blueprints/{id} если схема уже существует, иначе
+//    POST /api/blueprints. Тело: { brand, model, svg, parts }.
+// =============================================================================
 export default function BlueprintEditor() {
+  const params = useParams()
   const [tool, setTool] = useState('rect')
   const [figures, setFigures] = useState([])
   const [draft, setDraft] = useState(null)
   const [selectedId, setSelectedId] = useState(null)
   const [activeColor, setActiveColor] = useState('#4fa3ff')
+
+  // BLD-3: dropdown-каталог brand/model + текущий (существующий) blueprint id.
+  const [modelCatalog, setModelCatalog] = useState([]) // [{brand, model}, ...]
+  const [selBrand, setSelBrand] = useState('')
+  const [editingId, setEditingId] = useState(null) // id существующего blueprint для PUT
 
   // BLD-2: режим просмотра (view) — кликабельные фигуры с авто-наличием из каталога.
   const [mode, setMode] = useState('edit') // 'edit' | 'view'
@@ -389,9 +404,72 @@ export default function BlueprintEditor() {
     if (selectedId) patchSelected({ fill: c })
   }
 
+  // ---- BLD-3: каталог моделей для dropdown (brand+model из /api/donor-lots) ----
+  React.useEffect(() => {
+    let cancelled = false
+    authFetch('/api/donor-lots')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((lots) => {
+        if (cancelled) return
+        const arr = Array.isArray(lots) ? lots : []
+        const seen = new Set()
+        const pairs = []
+        arr.forEach((l) => {
+          const b = String(l.brand || '').trim()
+          const m = String(l.model || '').trim()
+          if (!b || !m) return
+          const key = b.toLowerCase() + '\u0001' + m.toLowerCase()
+          if (seen.has(key)) return
+          seen.add(key)
+          pairs.push({ brand: b, model: m })
+        })
+        setModelCatalog(pairs)
+      })
+      .catch(() => { /* фолбэк: остаёмся на ручном вводе */ })
+    return () => { cancelled = true }
+  }, [])
+
+  // ---- BLD-3: если URL нёс brand+model — предзаполнить и попытаться загрузить ----
+  const routeBrand = (params.brand || '').trim()
+  const routeModel = (params.model || '').trim()
+  React.useEffect(() => {
+    if (!routeBrand || !routeModel) return
+    const b = routeBrand.replace(/-/g, ' ')
+    const m = routeModel.replace(/-/g, ' ')
+    setBrand(b)
+    setSelBrand(b)
+    setModel(m)
+    authFetch(`/api/blueprints/${encodeURIComponent(routeBrand)}/${encodeURIComponent(routeModel)}`)
+      .then((r) => (r.ok ? r.json() : null)) // 404 -> пустой холст с предзаполненными brand/model
+      .then((bp) => {
+        if (!bp) { setSaveMsg({ type: 'ok', text: 'Создаётся новая схема для этой модели' }); return }
+        setBrand(bp.brand)
+        setModel(bp.model)
+        if (Array.isArray(bp.parts)) {
+          setFigures(bp.parts)
+          setEditingId(bp.id)
+          setSelectedId(null)
+          setSaveMsg({ type: 'ok', text: `Схема загружена (${bp.brand} ${bp.model}) — можно отредактировать и сохранить` })
+        }
+      })
+      .catch(() => { /* ignore */ })
+  }, [routeBrand, routeModel])
+
+  // производные списки для dropdown
+  const brands = useMemo(() => {
+    const s = new Set()
+    modelCatalog.forEach((p) => s.add(p.brand))
+    return [...s].sort((a, b) => a.localeCompare(b, 'ru'))
+  }, [modelCatalog])
+
+  const modelsForBrand = useMemo(() => {
+    if (!selBrand) return [...new Set(modelCatalog.map((p) => p.model))]
+    return modelCatalog.filter((p) => p.brand === selBrand).map((p) => p.model)
+  }, [modelCatalog, selBrand])
+
   // ---- persistence ----
   const loadSchemas = () => {
-    authFetch('/api/device-schemas')
+    authFetch('/api/blueprints')
       .then((r) => (r.ok ? r.json() : []))
       .then((list) => { setSavedSchemas(list || []) })
       .catch(() => setSavedSchemas([]))
@@ -411,24 +489,26 @@ export default function BlueprintEditor() {
       return
     }
     setSaving(true)
+    const isUpdate = !!editingId
     const body = {
       brand: brand.trim(),
       model: model.trim(),
-      inventree_donor_part_id: null,
-      exploded_view_url: buildSvg(figures),
-      hotspots: buildHotspots(figures),
+      svg: buildSvg(figures),
+      parts: figures,
     }
     try {
-      const r = await authFetch('/api/device-schemas', {
-        method: 'POST',
+      const url = isUpdate ? `/api/blueprints/${editingId}` : '/api/blueprints'
+      const r = await authFetch(url, {
+        method: isUpdate ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
       const data = await r.json()
       if (!r.ok) {
-        setSaveMsg({ type: 'err', text: data?.detail || 'Не удалось сохранить схему' })
+        setSaveMsg({ type: 'err', text: data?.detail || (isUpdate ? 'Не удалось обновить схему' : 'Не удалось сохранить схему') })
       } else {
-        setSaveMsg({ type: 'ok', text: `Схема сохранена (id: ${data.id})` })
+        setEditingId(data.id)
+        setSaveMsg({ type: 'ok', text: isUpdate ? `Схема обновлена (${data.brand} ${data.model})` : `Схема сохранена (id: ${data.id})` })
         loadSchemas()
       }
     } catch (err) {
@@ -442,8 +522,17 @@ export default function BlueprintEditor() {
     const s = savedSchemas.find((x) => x.id === loadId)
     if (!s) return
     setBrand(s.brand || '')
+    setSelBrand(s.brand || '')
     setModel(s.model || '')
-    const svgStr = s.exploded_view_url || ''
+    setEditingId(s.id || null)
+    if (Array.isArray(s.parts)) {
+      setFigures(s.parts)
+      setSelectedId(null)
+      setSaveMsg({ type: 'ok', text: 'Схема загружена' })
+      return
+    }
+    // фолбэк: парсим data-figures из svg
+    const svgStr = s.svg || ''
     const m = svgStr.match(/data-figures="([^"]*)"/)
     if (m) {
       try {
@@ -647,11 +736,25 @@ export default function BlueprintEditor() {
                 <div className="bld-save-grid">
                   <label className="pd-field">
                     <span className="pd-label">Бренд</span>
-                    <input className="pd-input" value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Apple" />
+                    {brands.length ? (
+                      <select className="pd-select bld-bm-select" value={brand} onChange={(e) => { setSelBrand(e.target.value); setBrand(e.target.value) }}>
+                        <option value="">— выберите бренд —</option>
+                        {brands.map((b) => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    ) : (
+                      <input className="pd-input" value={brand} onChange={(e) => { setBrand(e.target.value); setSelBrand(e.target.value) }} placeholder="Apple (ручной ввод)" />
+                    )}
                   </label>
                   <label className="pd-field">
                     <span className="pd-label">Модель</span>
-                    <input className="pd-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="iPhone X" />
+                    {modelsForBrand.length ? (
+                      <select className="pd-select bld-bm-select" value={model} onChange={(e) => setModel(e.target.value)}>
+                        <option value="">— выберите модель —</option>
+                        {modelsForBrand.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    ) : (
+                      <input className="pd-input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="iPhone X (ручной ввод)" />
+                    )}
                   </label>
                 </div>
                 <button type="submit" className="btn btn-primary" disabled={saving}>

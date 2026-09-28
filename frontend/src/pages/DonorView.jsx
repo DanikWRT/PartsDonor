@@ -24,6 +24,18 @@ export default function DonorView() {
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState(null)
   const [hasToken, setHasToken] = useState(false)
+  // BLD-3: кастомная схема (blueprint) для этой модели из конструктора.
+  const [customBp, setCustomBp] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!brand || !model) { setCustomBp(null); return }
+    fetch(`/api/blueprints/${encodeURIComponent(brand)}/${encodeURIComponent(model)}`)
+      .then((r) => (r.ok ? r.json() : null)) // 404 -> нет кастомной схемы
+      .then((bp) => { if (!cancelled) setCustomBp(bp) })
+      .catch(() => { if (!cancelled) setCustomBp(null) })
+    return () => { cancelled = true }
+  }, [brand, model])
 
   const loadListings = () =>
     fetch('/api/listings')
@@ -128,17 +140,30 @@ export default function DonorView() {
   }
 
   return (
-    <BlueprintExploded
-      components={components}
-      meta={{
-        brand,
-        model,
-        revision: REVISIONS[model] || 'A2897',
-        donorPartId: data.schema?.inventree_donor_part_id ?? data.donor_part_id,
-        explodedUrl: data.exploded_view_url,
-      }}
-      detailExtra={detailExtra}
-      back={<Link to="/donor-lots" className="ex-back">← Назад к донорам</Link>}
-    />
+    <div>
+      {customBp && (
+        <div className="bld3-donor-banner" role="note">
+          <span className="bld3-donor-banner-text">
+            Для этой модели есть кастомная схема в конструкторе ({customBp.parts?.length || 0} узлов)
+          </span>
+          <Link
+            to={`/editor/${encodeURIComponent(customBp.brand)}/${encodeURIComponent(customBp.model)}`}
+            className="btn btn-sm bld3-donor-editlink"
+          >✏️ Открыть схему в конструкторе</Link>
+        </div>
+      )}
+      <BlueprintExploded
+        components={components}
+        meta={{
+          brand,
+          model,
+          revision: REVISIONS[model] || 'A2897',
+          donorPartId: data.schema?.inventree_donor_part_id ?? data.donor_part_id,
+          explodedUrl: data.exploded_view_url,
+        }}
+        detailExtra={detailExtra}
+        back={<Link to="/donor-lots" className="ex-back">← Назад к донорам</Link>}
+      />
+    </div>
   )
 }

@@ -85,7 +85,7 @@ function AppInner() {
   const isWizard = pathname.startsWith('/donor/new')
   const isChat = pathname === '/chats' || pathname.startsWith('/chat/')
   const isKb = pathname === '/kb' || pathname.startsWith('/kb/')
-  const isEditor = pathname === '/editor'
+  const isEditor = pathname === '/editor' || pathname.startsWith('/editor/')
   return (
     <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}${isWizard ? ' pd-app-wizard' : ''}${isChat ? ' pd-app-chat' : ''}${isKb ? ' pd-app-kb' : ''}${isEditor ? ' pd-app-editor' : ''}`}>
       <HeaderNav onCartOpen={() => setCartOpen(true)} />
@@ -111,6 +111,7 @@ function AppInner() {
           <Route path="/master/:companyId" element={<Master />} />
           <Route path="/donor/new" element={<DonorWizard />} />
           <Route path="/editor" element={<BlueprintEditor />} />
+          <Route path="/editor/:brand/:model" element={<BlueprintEditor />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />
         </Routes>

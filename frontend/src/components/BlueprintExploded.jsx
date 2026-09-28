@@ -739,6 +739,27 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
         </svg>
   )
 
+  // ===== BPX-B: live availability halo classes =====
+  // Walk the static phoneSvg tree and recompute the className of every .svg-part
+  // node from its data-part + live compByPart, so the persistent green/red halo
+  // reflects real stock (not hardcoded). Draw key -> canonical key via DRAW_PART_MAP.
+  const applyAvailabilityClasses = (node) => {
+    if (!React.isValidElement(node)) return node
+    const props = node.props || {}
+    const cls = typeof props.className === 'string' ? props.className : ''
+    let nextProps = props
+    if (cls.split(/\s+/).indexOf('svg-part') !== -1) {
+      const dk = props['data-part']
+      if (dk) {
+        const k = DRAW_PART_MAP[dk] || dk
+        const av = hasComp(k)
+        nextProps = { ...props, className: 'svg-part' + (av ? '' : ' unavailable') }
+      }
+    }
+    const nextChildren = React.Children.map(props.children, applyAvailabilityClasses)
+    return React.cloneElement(node, nextProps, nextChildren)
+  }
+
   return (
     <div className="blueprint-page">
       <div className="bg-blueprint"></div>
@@ -796,7 +817,7 @@ export default function BlueprintExploded({ components = [], meta = {}, back, de
                 }
               }}
               onMouseLeave={() => setHoveredPart(null)}
-            >{phoneSvg}</div>
+            >{applyAvailabilityClasses(phoneSvg)}</div>
           </div>
           <div className="phone-controls">
             <button className="ctrl-btn" title="Повернуть">⟲</button>

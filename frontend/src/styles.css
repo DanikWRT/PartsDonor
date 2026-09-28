@@ -4131,9 +4131,8 @@ html, body { overflow-x: hidden; }
   --stroke: rgba(255,255,255,.08);
   --stroke-2: rgba(255,255,255,.16);
 
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  margin-top: -12px;
+  width: 100%;
+  margin-top: 0;
   background: var(--bg-0);
   color: var(--text);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

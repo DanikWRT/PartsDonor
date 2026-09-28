@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useCart } from '../cart.jsx'
 import { statusCls } from '../components/DonorExploded.jsx'
 import DonorBlueprintMini from '../components/DonorBlueprintMini.jsx'
@@ -229,8 +229,18 @@ function DonorBlueprint({ donor, hoverId, onHoverPart }) {
   )
 }
 
+// URL-safe hyphen slug: trim, collapse spaces to single hyphens, drop disallowed chars.
+const slugify = (s) =>
+  String(s || '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9_-]+/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+
 const DonorCard = React.memo(function DonorCard({ lot }) {
   const { add, has } = useCart()
+  const navigate = useNavigate()
   const [hoverPart, setHoverPart] = useState(null)
   const comps = lot.components || []
   const total = comps.reduce((s, c) => s + (Number(c.price_rub) || 0), 0)
@@ -238,8 +248,29 @@ const DonorCard = React.memo(function DonorCard({ lot }) {
   const canAdd = lot.listing_id != null && total > 0
   const inCart = canAdd && has(lot.listing_id)
 
+  // Донар с brand+model → новый blueprint-экран /donor/:brand/:model;
+  // без brand или model → прежний /donor-lot/:id.
+  const brand = String(lot.brand || '').trim()
+  const model = String(lot.model || '').trim()
+  const hasBm = brand !== '' && model !== ''
+  const detailPath = hasBm
+    ? `/donor/${slugify(brand)}/${slugify(model)}`
+    : `/donor-lot/${lot.id}`
+  const goDetail = () => navigate(detailPath)
+
   return (
-    <div className="donor-card">
+    <div
+      className={`donor-card${hasBm ? ' bm-link' : ''}`}
+      onClick={() => hasBm && goDetail()}
+      role={hasBm ? 'link' : undefined}
+      tabIndex={hasBm ? 0 : undefined}
+      onKeyDown={hasBm ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          goDetail()
+        }
+      } : undefined}
+    >
       <div className="donor-head">
         <div className="donor-name">
           {lot.brand} {lot.model}
@@ -294,12 +325,13 @@ const DonorCard = React.memo(function DonorCard({ lot }) {
           </div>
         </div>
         <div className="donor-foot-actions">
-          <Link to={`/donor-lot/${lot.id}`} className="btn btn-sm btn-ghost">Подробнее</Link>
+          <Link to={detailPath} className="btn btn-sm btn-ghost" onClick={(e) => e.stopPropagation()}>Подробнее</Link>
           <button
             type="button"
             className="btn btn-sm btn-primary"
             disabled={!canAdd || inCart}
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation()
               if (!canAdd) return
               add({
                 listing_id: lot.listing_id,

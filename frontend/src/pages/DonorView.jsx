@@ -120,7 +120,7 @@ export default function DonorView() {
             ))}
           </div>
         ) : (
-          <p className="pd-muted">Необходим вход (JWT отсутствует)</p>
+          <p className="pd-muted">Войдите в аккаунт продавца, чтобы управлять статусом детали</p>
         )}
         {notice && <p className={`ex-notice ${notice.kind}`}>{notice.text}</p>}
       </div>

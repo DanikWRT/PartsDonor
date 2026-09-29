@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { authFetch } from '../auth.jsx'
+import { PRESETS, PRESET_CATEGORIES, polygonPointsToFigures } from '../presets.js'
 
 // =============================================================================
 // BLD-1: 'Конструктор схемы' — SVG blueprint scheme drawing editor.
@@ -184,6 +185,27 @@ function buildHotspots(figures) {
 }
 
 // =============================================================================
+// BLD-4: панель «Пресеты» — миниатюра-иконка готовой запчасти для вставки.
+// Рисует мини-<svg viewBox="0 0 340 640"> с формой пресета (огрызок геометрии
+// показывается поверх всей карточки, масштаб 1/4).
+// =============================================================================
+function PresetIcon({ preset }) {
+  const p = preset
+  const s = 1 / 4
+  let use = null
+  if (p.shape === 'rect') {
+    use = <rect x={p.g.x * s} y={p.g.y * s} width={Math.max(1, p.g.w * s)} height={Math.max(1, p.g.h * s)} rx={(p.g.rx || 0) * s} fill={p.fill} fillOpacity="0.6" stroke={p.fill} strokeWidth="1" />
+  } else if (p.shape === 'circle') {
+    use = <circle cx={p.g.cx * s} cy={p.g.cy * s} r={Math.max(1, p.g.r * s)} fill={p.fill} fillOpacity="0.6" stroke={p.fill} strokeWidth="1" />
+  } else if (p.shape === 'polygon') {
+    const pts = p.g.points.map(([x, y]) => `${(x * s).toFixed(1)},${(y * s).toFixed(1)}`).join(' ')
+    use = <polygon points={pts} fill={p.fill} fillOpacity="0.6" stroke={p.fill} strokeWidth="1" />
+  }
+  return <svg className="bld-preset-shape" viewBox="0 0 340 640" preserveAspectRatio="xMidYMid meet" role="img" aria-label={p.name}>{use}</svg>
+}
+
+
+// =============================================================================
 // BLD-3: связка схемы с моделью (brand+model) + редактирование существующих.
 //  • BRAND/MODEL dropdown'ы из каталога моделей доноров (/api/donor-lots) с
 //    фолбэком на ручной ввод, если каталог пуст/недоступен.
@@ -209,6 +231,9 @@ export default function BlueprintEditor() {
   const [mode, setMode] = useState('edit') // 'edit' | 'view'
   const [viewSelectedId, setViewSelectedId] = useState(null)
   const [catalogMap, setCatalogMap] = useState({}) // key -> { available, price }
+
+  // BLD-4: панель пресетов — активная категория фильтра.
+  const [presetCat, setPresetCat] = useState('') // '' = все категории
 
   const [brand, setBrand] = useState('')
   const [model, setModel] = useState('')
@@ -556,6 +581,36 @@ export default function BlueprintEditor() {
     setSelectedId(null)
   }
 
+  // ---- BLD-4: добавление готовой фигуры по пресету ----
+  const addPreset = (preset) => {
+    const fig = { id: uid(), name: preset.name, key: preset.key, fill: preset.fill, z: preset.z }
+    if (preset.shape === 'rect') {
+      fig.type = 'rect'
+      fig.x = preset.g.x; fig.y = preset.g.y; fig.w = preset.g.w; fig.h = preset.g.h
+      if (preset.g.rx) fig.rx = preset.g.rx
+    } else if (preset.shape === 'circle') {
+      fig.type = 'circle'
+      fig.cx = preset.g.cx; fig.cy = preset.g.cy; fig.r = preset.g.r
+    } else if (preset.shape === 'polygon') {
+      fig.type = 'polygon'
+      fig.points = polygonPointsToFigures(preset.g.points)
+    }
+    setFigures((prev) => [...prev, fig])
+    setSelectedId(fig.id)
+    setTool('select')
+    setSaveMsg({ type: 'ok', text: `Добавлено: ${preset.name}` })
+  }
+
+  // Стабильная сортировка для отрисовки по z-index (пресеты из справочника имеют
+  // z 1..9; рисованные вручную фигуры — по умолчанию 5). Stable: равный z
+  // сохраняет порядок вставки (Array.prototype.sort стабилен в современных V8).
+  const renderFigs = useMemo(
+    () => figures.map((f, i) => ({ f, i })).sort((a, b) => ((a.f.z ?? 5) - (b.f.z ?? 5)) || (a.i - b.i)).map((x) => x.f),
+    [figures],
+  )
+
+  const filteredPresets = presetCat ? PRESETS.filter((p) => p.cat === presetCat) : PRESETS
+
   const selBox = selected ? bbox(selected) : null
   const viewSelected = mode === 'view' ? figures.find((f) => f.id === viewSelectedId) || null : null
   const viewSelState = viewSelected ? viewStateOf(viewSelected) : null
@@ -626,6 +681,51 @@ export default function BlueprintEditor() {
           )}
         </aside>
 
+        {/* ------- BLD-4: Панель «Пресеты» (готовые части) ------- */}
+        <aside className="bld-presets" aria-label="Пресеты запчастей">
+          <div className="bld-presets-head">
+            <span className="bld-toolbar-label">Пресеты</span>
+            <span className="bld-presets-count">{filteredPresets.length}</span>
+          </div>
+          <div className="bld-presets-cats" role="tablist" aria-label="Категории">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={presetCat === ''}
+              className={`bld-preset-cat${presetCat === '' ? ' is-active' : ''}`}
+              onClick={() => setPresetCat('')}
+            >
+              Все
+            </button>
+            {PRESET_CATEGORIES.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                role="tab"
+                aria-selected={presetCat === c.id}
+                className={`bld-preset-cat${presetCat === c.id ? ' is-active' : ''}`}
+                onClick={() => setPresetCat(c.id)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          <div className="bld-presets-grid">
+            {filteredPresets.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                className="bld-preset-card"
+                title={`${p.name} — клик, чтобы добавить`}
+                onClick={() => addPreset(p)}
+              >
+                <span className="bld-preset-thumb"><PresetIcon preset={p} /></span>
+                <span className="bld-preset-name">{p.name}</span>
+              </button>
+            ))}
+          </div>
+        </aside>
+
         {/* ------- Canvas ------- */}
         <div className="bld-canvas-wrap">
           <svg
@@ -651,7 +751,7 @@ export default function BlueprintEditor() {
             <circle cx="170" cy="40" r="7" fill="none" stroke="#2a3348" strokeWidth="2" />
 
             {mode === 'view'
-              ? figures.map((f) => {
+              ? renderFigs.map((f) => {
                   const b = bbox(f)
                   const st = viewStateOf(f)
                   const avail = st.available
@@ -675,7 +775,7 @@ export default function BlueprintEditor() {
                 })
               : (
                 <>
-                  {figures.map((f) => {
+                  {renderFigs.map((f) => {
                     const el = shapeEl(f, false)
                     return React.cloneElement(el, { className: f.id === selectedId ? 'bld-fig is-selected' : 'bld-fig' })
                   })}

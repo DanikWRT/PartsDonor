@@ -4922,7 +4922,21 @@ html, body { overflow-x: hidden; }
 .bld-title { margin: 0; font-size: 24px; color: var(--text); letter-spacing: .3px; }
 .bld-sub { margin: 6px 0 0; color: var(--text-2); font-size: 13px; max-width: 620px; }
 
-.bld-layout { display: grid; grid-template-columns: 200px minmax(0,1fr) 210px 260px; gap: 20px; align-items: start; }
+.bld-layout {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 400px;
+  gap: 18px;
+  align-items: stretch;
+  height: calc(100vh - 220px);
+  min-height: 560px;
+}
+
+/* ---- right control panel: single vertical scroller wrapping toolbar+presets+panel ---- */
+.bld-control {
+  display: flex; flex-direction: column; gap: 14px;
+  overflow-y: auto; min-height: 0;
+  padding: 2px 2px 6px;
+}
 
 /* ---- toolbar ---- */
 .bld-toolbar, .bld-panel {
@@ -4954,9 +4968,10 @@ html, body { overflow-x: hidden; }
 /* ---- canvas ---- */
 .bld-canvas-wrap {
   background: rgba(5,6,8,.6); border: 1px solid var(--stroke); border-radius: 14px;
-  display: flex; justify-content: center; padding: 16px;
+  display: flex; justify-content: center; align-items: flex-start; padding: 16px;
+  min-height: 0; overflow: auto;
 }
-.bld-canvas { width: 100%; max-width: 340px; height: auto; display: block; touch-action: none; user-select: none; }
+.bld-canvas { width: 100%; max-width: 480px; height: auto; display: block; touch-action: none; user-select: none; }
 .bld-canvas.tool-select { cursor: default; }
 .bld-canvas.tool-rect, .bld-canvas.tool-circle, .bld-canvas.tool-ellipse, .bld-canvas.tool-polygon { cursor: crosshair; }
 .bld-fig { transition: stroke-width .12s; }
@@ -5052,11 +5067,12 @@ html, body { overflow-x: hidden; }
   border: 1px solid var(--stroke);
   border-radius: 12px;
   padding: 14px;
-  max-height: 720px;
+  max-height: none;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow: hidden;
+  overflow: visible;
+  flex: none;
 }
 .bld-presets-head {
   display: flex;
@@ -5305,15 +5321,15 @@ html, body { overflow-x: hidden; }
 
 /* ---- adaptive: desktop ⟶ mobile ---- */
 @media (max-width: 900px) {
-  .bld-layout { grid-template-columns: 1fr; }
+  .bld-layout { grid-template-columns: 1fr; height: auto; min-height: 0; }
   .bld-toolbar { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; }
   .bld-tools { flex-direction: row; flex-wrap: wrap; }
   .bld-tool { width: auto; flex-direction: column; gap: 2px; padding: 7px 10px; }
   .bld-tool-name { font-size: 11px; }
   .bld-palette { grid-template-columns: repeat(8, 1fr); gap: 6px; }
   .bld-canvas-wrap { order: -1; }
+  .bld-control { order: 1; overflow: visible; max-height: none; padding: 0; }
   .bld-save-grid { grid-template-columns: 1fr; }
-  .bld-presets { order: 1; max-height: none; }
   .bld-presets-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 }
 @media (max-width: 560px) {

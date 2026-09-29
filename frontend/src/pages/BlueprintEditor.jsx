@@ -784,6 +784,83 @@ export default function BlueprintEditor() {
       </div>
 
       <div className="bld-layout">
+        {/* ------- Canvas ------- */}
+        <div className="bld-canvas-wrap">
+          <svg
+            ref={svgRef}
+            className={`bld-canvas${mode === 'view' ? ' is-view' : ''} tool-${tool}`}
+            viewBox={`0 0 ${VB_W} ${VB_H}`}
+            role="img"
+            aria-label="Холст схемы"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+          >
+            {/* фон-сетка (blueprint) */}
+            <defs>
+              <pattern id="bld-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                <path d="M20 0H0V20" fill="none" stroke="rgba(79,163,255,.06)" strokeWidth="1" />
+              </pattern>
+            </defs>
+            <rect x="0" y="0" width={VB_W} height={VB_H} fill="url(#bld-grid)" />
+            {/* телефонная рамка-подложка */}
+            <rect x="16" y="18" width="308" height="604" rx="26" fill="rgba(255,255,255,.015)" stroke="#2a3348" strokeWidth="2" />
+            <rect x="24" y="58" width="292" height="548" rx="8" fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="1" />
+            <circle cx="170" cy="40" r="7" fill="none" stroke="#2a3348" strokeWidth="2" />
+
+            {mode === 'view'
+              ? renderFigs.map((f) => {
+                  const b = bbox(f)
+                  const st = viewStateOf(f)
+                  const avail = st.available
+                  const col = avail ? '#22c55e' : '#ef4444'
+                  const el = shapeEl(f, true)
+                  const name = f.name || f.key || 'Деталь'
+                  return (
+                    <g
+                      key={f.id}
+                      className={`bld-view-fig${avail ? '' : ' unavailable'}${viewSelectedId === f.id ? ' is-selected' : ''}`}
+                      data-fig={f.id}
+                      onClick={() => setViewSelectedId(f.id)}
+                    >
+                      {React.cloneElement(el, { fill: 'transparent', stroke: col })}
+                      {/* постоянное гало-подсветка всего bbox по цвету наличия */}
+                      <rect className="bld-view-halo" x={b.x} y={b.y} width={b.w} height={b.h} />
+                      {/* прозрачная hit-зона на весь bbox (клик/ховер всей области) */}
+                      <rect className="bld-view-hitarea" x={b.x} y={b.y} width={b.w} height={b.h} data-name={name} />
+                    </g>
+                  )
+                })
+              : (
+                <>
+                  {renderFigs.map((f) => {
+                    const el = shapeEl(f, false)
+                    return React.cloneElement(el, { className: f.id === selectedId ? 'bld-fig is-selected' : 'bld-fig' })
+                  })}
+                  {draft && <g className="bld-fig bld-draft" pointerEvents="none">{shapeEl(draft, true)}</g>}
+                </>
+              )}
+
+            {/* выделение + resize-маркер (только в режиме редактирования) */}
+            {mode === 'edit' && selBox && (
+              <g className="bld-sel" pointerEvents="none">
+                <rect
+                  x={selBox.x - 3} y={selBox.y - 3}
+                  width={selBox.w + 6} height={selBox.h + 6}
+                  fill="none" stroke="#4fa3ff" strokeDasharray="4 3" strokeWidth="1.2"
+                />
+                <rect
+                  className="bld-resize-handle"
+                  x={selBox.x + selBox.w - 4} y={selBox.y + selBox.h - 4}
+                  width="8" height="8"
+                  fill="#050608" stroke="#4fa3ff" strokeWidth="2"
+                />
+              </g>
+            )}
+          </svg>
+        </div>
+
+        <aside className="bld-control" aria-label="Панель управления">
         {/* ------- Toolbar ------- */}
         <aside className="bld-toolbar" aria-label="Инструменты">
           {mode === 'edit' ? (
@@ -880,82 +957,6 @@ export default function BlueprintEditor() {
             ))}
           </div>
         </aside>
-
-        {/* ------- Canvas ------- */}
-        <div className="bld-canvas-wrap">
-          <svg
-            ref={svgRef}
-            className={`bld-canvas${mode === 'view' ? ' is-view' : ''} tool-${tool}`}
-            viewBox={`0 0 ${VB_W} ${VB_H}`}
-            role="img"
-            aria-label="Холст схемы"
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-          >
-            {/* фон-сетка (blueprint) */}
-            <defs>
-              <pattern id="bld-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                <path d="M20 0H0V20" fill="none" stroke="rgba(79,163,255,.06)" strokeWidth="1" />
-              </pattern>
-            </defs>
-            <rect x="0" y="0" width={VB_W} height={VB_H} fill="url(#bld-grid)" />
-            {/* телефонная рамка-подложка */}
-            <rect x="16" y="18" width="308" height="604" rx="26" fill="rgba(255,255,255,.015)" stroke="#2a3348" strokeWidth="2" />
-            <rect x="24" y="58" width="292" height="548" rx="8" fill="none" stroke="rgba(255,255,255,.05)" strokeWidth="1" />
-            <circle cx="170" cy="40" r="7" fill="none" stroke="#2a3348" strokeWidth="2" />
-
-            {mode === 'view'
-              ? renderFigs.map((f) => {
-                  const b = bbox(f)
-                  const st = viewStateOf(f)
-                  const avail = st.available
-                  const col = avail ? '#22c55e' : '#ef4444'
-                  const el = shapeEl(f, true)
-                  const name = f.name || f.key || 'Деталь'
-                  return (
-                    <g
-                      key={f.id}
-                      className={`bld-view-fig${avail ? '' : ' unavailable'}${viewSelectedId === f.id ? ' is-selected' : ''}`}
-                      data-fig={f.id}
-                      onClick={() => setViewSelectedId(f.id)}
-                    >
-                      {React.cloneElement(el, { fill: 'transparent', stroke: col })}
-                      {/* постоянное гало-подсветка всего bbox по цвету наличия */}
-                      <rect className="bld-view-halo" x={b.x} y={b.y} width={b.w} height={b.h} />
-                      {/* прозрачная hit-зона на весь bbox (клик/ховер всей области) */}
-                      <rect className="bld-view-hitarea" x={b.x} y={b.y} width={b.w} height={b.h} data-name={name} />
-                    </g>
-                  )
-                })
-              : (
-                <>
-                  {renderFigs.map((f) => {
-                    const el = shapeEl(f, false)
-                    return React.cloneElement(el, { className: f.id === selectedId ? 'bld-fig is-selected' : 'bld-fig' })
-                  })}
-                  {draft && <g className="bld-fig bld-draft" pointerEvents="none">{shapeEl(draft, true)}</g>}
-                </>
-              )}
-
-            {/* выделение + resize-маркер (только в режиме редактирования) */}
-            {mode === 'edit' && selBox && (
-              <g className="bld-sel" pointerEvents="none">
-                <rect
-                  x={selBox.x - 3} y={selBox.y - 3}
-                  width={selBox.w + 6} height={selBox.h + 6}
-                  fill="none" stroke="#4fa3ff" strokeDasharray="4 3" strokeWidth="1.2"
-                />
-                <rect
-                  className="bld-resize-handle"
-                  x={selBox.x + selBox.w - 4} y={selBox.y + selBox.h - 4}
-                  width="8" height="8"
-                  fill="#050608" stroke="#4fa3ff" strokeWidth="2"
-                />
-              </g>
-            )}
-          </svg>
-        </div>
 
         {/* ------- Properties + Save ------- */}
         <aside className="bld-panel" aria-label="Свойства и сохранение">
@@ -1059,6 +1060,7 @@ export default function BlueprintEditor() {
             </select>
             <button type="button" className="btn btn-sm" onClick={loadSaved} disabled={!loadId}>Загрузить</button>
           </div>
+        </aside>
         </aside>
       </div>
 

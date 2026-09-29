@@ -4964,6 +4964,14 @@ html, body { overflow-x: hidden; }
 .bld-swatch.is-active { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg-0), 0 0 0 4px currentColor; }
 .bld-palette-hint { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
 .bld-palette-hint .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.bld-groupbar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bld-group-btn {
+  padding: 9px 10px; border-radius: 9px; cursor: pointer; text-align: center;
+  border: 1px solid var(--stroke); background: transparent; color: var(--text-2);
+  font-family: inherit; font-size: 12.5px; transition: all .18s;
+}
+.bld-group-btn:hover:not(:disabled) { background: rgba(255,255,255,.05); color: var(--text); border-color: var(--stroke-2); }
+.bld-group-btn:disabled { opacity: .4; cursor: not-allowed; }
 
 /* ---- canvas ---- */
 .bld-canvas-wrap {
@@ -4978,6 +4986,7 @@ html, body { overflow-x: hidden; }
 .bld-fig.is-selected { stroke-width: 2; }
 .bld-resize-handle { cursor: nwse-resize; }
 .bld-sel { pointer-events: none; }
+.bld-sel-group { pointer-events: none; }
 
 /* ---- properties / save panel ---- */
 .bld-props { display: flex; flex-direction: column; gap: 10px; }

@@ -96,6 +96,28 @@ function rescaleFigure(fig, oldL, oldT, oldW, oldH, nL, nT, nW, nH) {
   }
 }
 
+// Масштаб фигуры вокруг фиксированной точки-якоря (ax, ay) с коэффициентами
+// sx/sy. Используется для синхронного ресайза всей группы: якорь — верхний
+// левый угол bbox перетаскиваемой (выбранной) фигуры, а все остальные члены
+// группы масштабируются относительно него тем же преобразованием.
+function scaleFigureAround(fig, ax, ay, sx, sy) {
+  switch (fig.type) {
+    case 'rect':
+      return { ...fig, x: ax + (fig.x - ax) * sx, y: ay + (fig.y - ay) * sy, w: fig.w * sx, h: fig.h * sy }
+    case 'circle':
+      return { ...fig, cx: ax + (fig.cx - ax) * sx, cy: ay + (fig.cy - ay) * sy, r: fig.r * Math.max(sx, sy) }
+    case 'ellipse':
+      return { ...fig, cx: ax + (fig.cx - ax) * sx, cy: ay + (fig.cy - ay) * sy, rx: fig.rx * sx, ry: fig.ry * sy }
+    case 'polygon':
+      return {
+        ...fig,
+        points: fig.points.map((p) => ({ x: ax + (p.x - ax) * sx, y: ay + (p.y - ay) * sy })),
+      }
+    default:
+      return fig
+  }
+}
+
 function pointInPoly(pt, points) {
   let inside = false
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
@@ -325,6 +347,7 @@ export default function BlueprintEditor() {
   const [figures, setFigures] = useState([])
   const [draft, setDraft] = useState(null)
   const [selectedId, setSelectedId] = useState(null)
+  const [selectedIds, setSelectedIds] = useState([])
   const [activeColor, setActiveColor] = useState('#4fa3ff')
 
   // BLD-3: dropdown-каталог brand/model + текущий (существующий) blueprint id.
@@ -469,11 +492,26 @@ export default function BlueprintEditor() {
       }
       const hit = hitTest(p, figures)
       if (hit) {
-        setSelectedId(hit.id)
+        const additive = e.ctrlKey || e.metaKey || e.shiftKey
+        // Единый источник правды о выделении — множество id. selectedId остаётся
+        // «последним кликнутым» (для пропс-панели и resize-маркера) и всегда входит
+        // в это множество.
+        const cur = new Set([...selectedIds, selectedId].filter(Boolean))
+        if (additive) {
+          if (cur.has(hit.id)) cur.delete(hit.id) // снять фигуру из множественного выделения
+          else cur.add(hit.id)
+        } else {
+          cur.clear()
+          cur.add(hit.id)
+        }
+        setSelectedIds([...cur])
+        // selectedId = последний кликнутый и оставшийся выбранным; при снятии — прежний.
+        setSelectedId(cur.has(hit.id) ? hit.id : (selectedIds.includes(hit.id) ? selectedIds[selectedIds.length - 1] : selectedId))
         const b = bbox(hit)
         interactionRef.current = { kind: 'move', figId: hit.id, px: p.x, py: p.y }
       } else {
         setSelectedId(null)
+        setSelectedIds([])
       }
       return
     }
@@ -499,12 +537,30 @@ export default function BlueprintEditor() {
     } else if (ia.kind === 'move') {
       const dx = p.x - ia.px, dy = p.y - ia.py
       ia.px = p.x; ia.py = p.y
-      setFigures((prev) => prev.map((f) => (f.id === ia.figId ? translateFigure(f, dx, dy) : f)))
+      setFigures((prev) => {
+        const src = prev.find((f) => f.id === ia.figId)
+        const gid = src && src.group
+        // Групповой перенос: двигаем всю группу (или только фигуру, если не в группе).
+        return prev.map((f) =>
+          (gid ? f.group === gid : f.id === ia.figId) ? translateFigure(f, dx, dy) : f,
+        )
+      })
     } else if (ia.kind === 'resize') {
       const nL = ia.left, nT = ia.top, nW = p.x - ia.left, nH = p.y - ia.top
-      setFigures((prev) =>
-        prev.map((f) => (f.id === ia.figId ? rescaleFigure(f, ia.left, ia.top, ia.w, ia.h, nL, nT, nW, nH) : f)),
-      )
+      const w2 = nW <= 0 ? 1 : nW
+      const h2 = nH <= 0 ? 1 : nH
+      const sx = w2 / ia.w
+      const sy = h2 / ia.h
+      setFigures((prev) => {
+        const src = prev.find((f) => f.id === ia.figId)
+        const gid = src && src.group
+        return prev.map((f) => {
+          if (!(gid ? f.group === gid : f.id === ia.figId)) return f
+          if (f.id === ia.figId) return rescaleFigure(f, ia.left, ia.top, ia.w, ia.h, nL, nT, w2, h2)
+          // Сибленинг группы масштабируем тем же преобразованием относительно якоря.
+          return scaleFigureAround(f, ia.left, ia.top, sx, sy)
+        })
+      })
     }
   }
 
@@ -765,6 +821,58 @@ export default function BlueprintEditor() {
     persistPresets(nextList)
   }
 
+  // ---- GROUP-1: мульти-выделение, группы, подсветка группы ----
+  // Множество выбранных id (selectedId всегда входит в него как «последний»).
+  const selectedSet = useMemo(() => {
+    const s = new Set(selectedIds || [])
+    if (selectedId) s.add(selectedId)
+    return s
+  }, [selectedIds, selectedId])
+
+  const selFigures = useMemo(
+    () => figures.filter((f) => selectedSet.has(f.id)),
+    [figures, selectedSet],
+  )
+
+  const selFirstGroup = selFigures.length ? selFigures[0].group : null
+  const allSameGroup = !!selFirstGroup && selFigures.every((f) => f.group === selFirstGroup)
+  const groupMemberCount = allSameGroup ? figures.filter((f) => f.group === selFirstGroup).length : 0
+  const canGroup = selFigures.length >= 2
+  const canUngroup = allSameGroup && groupMemberCount >= 2
+
+  const groupSelected = () => {
+    if (selFigures.length < 2) return
+    const gid = 'g-' + uid()
+    setFigures((prev) => prev.map((f) => (selectedSet.has(f.id) ? { ...f, group: gid } : f)))
+    setSaveMsg({ type: 'ok', text: 'Фигуры сгруппированы' })
+  }
+
+  const ungroupSelected = () => {
+    if (!selFirstGroup || !allSameGroup) return
+    setFigures((prev) => prev.map((f) => (f.group === selFirstGroup ? { ...f, group: undefined } : f)))
+    setSaveMsg({ type: 'ok', text: 'Фигуры разгруппированы' })
+  }
+
+  // Общие dashed-боксы групп: для каждой группы, в которой есть выбранная
+  // фигура, считаем union-bbox всех её членов на холсте.
+  const selectedGroups = useMemo(() => {
+    const gset = new Set()
+    figures.forEach((f) => { if (f.group && selectedSet.has(f.id)) gset.add(f.group) })
+    const out = []
+    gset.forEach((gid) => {
+      const members = figures.filter((f) => f.group === gid)
+      if (members.length < 2) return
+      let x = Infinity, y = Infinity, X = -Infinity, Y = -Infinity
+      members.forEach((m) => {
+        const b = bbox(m)
+        x = Math.min(x, b.x); y = Math.min(y, b.y)
+        X = Math.max(X, b.x + b.w); Y = Math.max(Y, b.y + b.h)
+      })
+      out.push({ id: gid, x, y, w: X - x, h: Y - y })
+    })
+    return out
+  }, [figures, selectedSet])
+
   const selBox = selected ? bbox(selected) : null
   const viewSelected = mode === 'view' ? figures.find((f) => f.id === viewSelectedId) || null : null
   const viewSelState = viewSelected ? viewStateOf(viewSelected) : null
@@ -835,11 +943,22 @@ export default function BlueprintEditor() {
                 <>
                   {renderFigs.map((f) => {
                     const el = shapeEl(f, false)
-                    return React.cloneElement(el, { className: f.id === selectedId ? 'bld-fig is-selected' : 'bld-fig' })
+                    return React.cloneElement(el, { className: selectedSet.has(f.id) ? 'bld-fig is-selected' : 'bld-fig' })
                   })}
                   {draft && <g className="bld-fig bld-draft" pointerEvents="none">{shapeEl(draft, true)}</g>}
                 </>
               )}
+
+            {/* общий выделяющий бокс группы (только в режиме редактирования) */}
+            {mode === 'edit' && selectedGroups.map((gb) => (
+              <g key={gb.id} className="bld-sel-group" pointerEvents="none">
+                <rect
+                  x={gb.x - 3} y={gb.y - 3}
+                  width={gb.w + 6} height={gb.h + 6}
+                  fill="none" stroke="#fbbf24" strokeDasharray="6 3" strokeWidth="1.2"
+                />
+              </g>
+            ))}
 
             {/* выделение + resize-маркер (только в режиме редактирования) */}
             {mode === 'edit' && selBox && (
@@ -899,6 +1018,21 @@ export default function BlueprintEditor() {
                 <span className="dot" style={{ background: '#22c55e' }} /> в наличии
                 <span className="dot" style={{ background: '#ef4444' }} /> нет в наличии
               </p>
+              <span className="bld-toolbar-label">Группировка</span>
+              <div className="bld-groupbar">
+                <button
+                  type="button"
+                  className="bld-group-btn"
+                  disabled={!canGroup}
+                  onClick={groupSelected}
+                >Сгруппировать</button>
+                <button
+                  type="button"
+                  className="bld-group-btn"
+                  disabled={!canUngroup}
+                  onClick={ungroupSelected}
+                >Разгруппировать</button>
+              </div>
             </>
           ) : (
             <div className="bld-view-note">

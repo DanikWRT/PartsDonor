@@ -193,7 +193,24 @@ function PresetIcon({ preset }) {
   const p = preset
   const s = 1 / 4
   let use = null
-  if (p.shape === 'rect') {
+  if (Array.isArray(p.shapes) && p.shapes.length > 0) {
+    use = p.shapes.map((sh, i) => {
+      const f = sh.fill || p.fill
+      const common = { key: i, fill: f, fillOpacity: 0.6, stroke: f, strokeWidth: 1 }
+      const g = sh.g
+      if (sh.shape === 'rect') {
+        return <rect {...common} x={g.x * s} y={g.y * s} width={Math.max(1, g.w * s)} height={Math.max(1, g.h * s)} rx={(g.rx || 0) * s} />
+      } else if (sh.shape === 'circle') {
+        return <circle {...common} cx={g.cx * s} cy={g.cy * s} r={Math.max(1, g.r * s)} />
+      } else if (sh.shape === 'ellipse') {
+        return <ellipse {...common} cx={g.cx * s} cy={g.cy * s} rx={Math.max(1, g.rx * s)} ry={Math.max(1, g.ry * s)} />
+      } else if (sh.shape === 'polygon') {
+        const pts = g.points.map(([x, y]) => `${(x * s).toFixed(1)},${(y * s).toFixed(1)}`).join(' ')
+        return <polygon {...common} points={pts} />
+      }
+      return null
+    })
+  } else if (p.shape === 'rect') {
     use = <rect x={p.g.x * s} y={p.g.y * s} width={Math.max(1, p.g.w * s)} height={Math.max(1, p.g.h * s)} rx={(p.g.rx || 0) * s} fill={p.fill} fillOpacity="0.6" stroke={p.fill} strokeWidth="1" />
   } else if (p.shape === 'circle') {
     use = <circle cx={p.g.cx * s} cy={p.g.cy * s} r={Math.max(1, p.g.r * s)} fill={p.fill} fillOpacity="0.6" stroke={p.fill} strokeWidth="1" />
@@ -582,7 +599,38 @@ export default function BlueprintEditor() {
   }
 
   // ---- BLD-4: добавление готовой фигуры по пресету ----
+  // Разбор одной примитивной фигуры (shape-объект) в фигуру холста.
+  const shapeToFig = (sh, name, key, groupId) => {
+    const fig = { id: uid(), name, key, fill: sh.fill, z: sh.z, group: groupId }
+    const g = sh.g
+    if (sh.shape === 'rect') {
+      fig.type = 'rect'
+      fig.x = g.x; fig.y = g.y; fig.w = g.w; fig.h = g.h
+      if (g.rx) fig.rx = g.rx
+    } else if (sh.shape === 'circle') {
+      fig.type = 'circle'
+      fig.cx = g.cx; fig.cy = g.cy; fig.r = g.r
+    } else if (sh.shape === 'ellipse') {
+      fig.type = 'ellipse'
+      fig.cx = g.cx; fig.cy = g.cy; fig.rx = g.rx; fig.ry = g.ry
+    } else if (sh.shape === 'polygon') {
+      fig.type = 'polygon'
+      fig.points = polygonPointsToFigures(g.points)
+    }
+    return fig
+  }
+
   const addPreset = (preset) => {
+    // Композитный пресет: все примитивы одной группы добавляются вместе.
+    if (Array.isArray(preset.shapes) && preset.shapes.length > 0) {
+      const gid = 'g-' + uid()
+      const newFigs = preset.shapes.map((sh) => shapeToFig(sh, preset.name, preset.key, gid))
+      setFigures((prev) => [...prev, ...newFigs])
+      setSelectedId(newFigs[newFigs.length - 1].id)
+      setTool('select')
+      setSaveMsg({ type: 'ok', text: `Добавлено: ${preset.name}` })
+      return
+    }
     const fig = { id: uid(), name: preset.name, key: preset.key, fill: preset.fill, z: preset.z }
     if (preset.shape === 'rect') {
       fig.type = 'rect'

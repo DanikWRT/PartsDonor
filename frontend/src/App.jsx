@@ -85,9 +85,13 @@ function AppInner() {
   const isWizard = pathname.startsWith('/donor/new')
   const isChat = pathname === '/chats' || pathname.startsWith('/chat/')
   const isKb = pathname === '/kb' || pathname.startsWith('/kb/')
-  const isEditor = pathname === '/editor' || pathname.startsWith('/editor/')
+  const isEditor = pathname === '/editor' || pathname.startsWith('/editor/') || pathname === '/editors' || pathname.startsWith('/editors/')
+  // Тёмные full-bleed страницы (blueprint /donor/:brand/:model и конструктор) —
+  // header должен оставаться непрозрачным со светлыми ссылками на любом фоне.
+  const isDonorBp = /^\/donor\/[^/]+\/[^/]+$/.test(pathname)
+  const isDark = isEditor || isDonorBp
   return (
-    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}${isWizard ? ' pd-app-wizard' : ''}${isChat ? ' pd-app-chat' : ''}${isKb ? ' pd-app-kb' : ''}${isEditor ? ' pd-app-editor' : ''}`}>
+    <div className={`pd-app${isShowcase ? ' pd-app-showcase' : ''}${isStorefront ? ' pd-app-storefront' : ''}${isWizard ? ' pd-app-wizard' : ''}${isChat ? ' pd-app-chat' : ''}${isKb ? ' pd-app-kb' : ''}${isEditor ? ' pd-app-editor' : ''}${isDark ? ' pd-app-dark' : ''}`}>
       <HeaderNav onCartOpen={() => setCartOpen(true)} />
       <main className="pd-main">
         <React.Suspense fallback={<RouteFallback />}>
@@ -112,6 +116,8 @@ function AppInner() {
           <Route path="/donor/new" element={<DonorWizard />} />
           <Route path="/editor" element={<BlueprintEditor />} />
           <Route path="/editor/:brand/:model" element={<BlueprintEditor />} />
+          <Route path="/editors" element={<BlueprintEditor />} />
+          <Route path="/editors/:brand/:model" element={<BlueprintEditor />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />
         </Routes>

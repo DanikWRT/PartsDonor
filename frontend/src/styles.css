@@ -4894,6 +4894,23 @@ html, body { overflow-x: hidden; }
 .pd-app-editor .pd-f8-auth-user { color: var(--text-2); }
 .pd-app-editor .pd-f8-logout, .pd-app-editor .pd-f8-login-link { color: var(--accent); }
 
+/* FIX-NAV: общий класс для тёмных full-bleed страниц (конструктор + blueprint /donor/:brand/:model).
+   Непрозрачный sticky-header со светлыми ссылками, читаем на любом фоне (контраст ≥4.5:1). */
+.pd-app-dark { max-width: none; padding: 0; background: var(--bg-0); color: var(--text); min-height: 100vh; }
+.pd-app-dark .pd-main { padding: 0; }
+.pd-app-dark .pd-header {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(5,6,8,.95); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid var(--stroke); box-shadow: 0 1px 0 rgba(0,0,0,.2);
+  padding: 14px 28px;
+}
+.pd-app-dark .pd-logo { color: var(--text); }
+.pd-app-dark .pd-nav a { color: var(--text-2); }
+.pd-app-dark .pd-nav a:hover { color: var(--text); background: rgba(255,255,255,.04); }
+.pd-app-dark .pd-nav a.active { color: var(--text); background: rgba(255,255,255,.06); border: 1px solid var(--stroke); }
+.pd-app-dark .pd-f8-auth-user { color: var(--text-2); }
+.pd-app-dark .pd-f8-logout, .pd-app-dark .pd-f8-login-link { color: var(--accent); }
+
 .bld-editor {
   max-width: 1200px; margin: 0 auto; padding: 22px 28px 48px;
   background:

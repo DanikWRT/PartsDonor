@@ -221,6 +221,94 @@ function PresetIcon({ preset }) {
   return <svg className="bld-preset-shape" viewBox="0 0 340 640" preserveAspectRatio="xMidYMid meet" role="img" aria-label={p.name}>{use}</svg>
 }
 
+// =============================================================================
+// PRESET-2: полномасштабный рендер композиции пресета (viewBox 340x640) для
+// живого превью в редакторе. Работает с shapes[] (source of truth) и с legacy
+// одиночной формой. Тот же рендер-подход, что у PresetIcon, но в масштабе 1:1.
+// =============================================================================
+function PresetSvg({ preset, className }) {
+  const p = preset
+  const shapes = Array.isArray(p.shapes) && p.shapes.length > 0
+    ? p.shapes
+    : [{ shape: p.shape, g: p.g, fill: p.fill, z: p.z }]
+  const els = shapes.map((sh, i) => {
+    const f = sh.fill || p.fill || '#4fa3ff'
+    const common = { key: i, fill: f, fillOpacity: 0.6, stroke: f, strokeWidth: 1 }
+    const g = sh.g
+    if (!g) return null
+    if (sh.shape === 'rect') return <rect {...common} x={g.x} y={g.y} width={Math.max(1, g.w)} height={Math.max(1, g.h)} rx={(g.rx || 0)} />
+    if (sh.shape === 'circle') return <circle {...common} cx={g.cx} cy={g.cy} r={Math.max(1, g.r)} />
+    if (sh.shape === 'ellipse') return <ellipse {...common} cx={g.cx} cy={g.cy} rx={Math.max(1, g.rx)} ry={Math.max(1, g.ry)} />
+    if (sh.shape === 'polygon' && Array.isArray(g.points)) {
+      const pts = g.points.map((pt) => `${pt[0]},${pt[1]}`).join(' ')
+      return <polygon {...common} points={pts} />
+    }
+    return null
+  })
+  return <svg className={className} viewBox="0 0 340 640" preserveAspectRatio="xMidYMid meet" role="img" aria-label={p.name}>{els}</svg>
+}
+
+// Приводит пресет к единообразной работе с shapes[]: если shapes[] нет/пуст —
+// конвертирует legacy одиночную форму в массив из одной фигуры.
+function normalizePreset(p) {
+  let shapes = p.shapes
+  if (!Array.isArray(shapes) || shapes.length === 0) {
+    shapes = [{ shape: p.shape || 'rect', g: { ...p.g }, fill: p.fill, z: p.z }]
+  }
+  return { ...p, shapes }
+}
+
+// Быстрый набор цветов-свотчей для подбора fill фигуры в редакторе.
+const MODAL_SWATCHES = ['#4fa3ff', '#22c55e', '#ef4444', '#fbbf24', '#7cf7d0', '#60a5fa', '#a78bfa', '#212121', '#757575', '#f0f3f8']
+
+// ---- PRESET-2: persist-слой пресетов (localStorage) ----
+// Постоянные кастомные пресеты: pd-presets-custom (массив с custom:true).
+// Удаление дефолтных: tombstones в pd-presets-deleted (массив ключей).
+function readLS(key, fallback) {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || 'null')
+    return Array.isArray(v) ? v : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function persistPresets(nextList) {
+  try {
+    localStorage.setItem('pd-presets-custom', JSON.stringify(nextList.filter((p) => p && p.custom)))
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function persistDeleted(deletedSet) {
+  try {
+    localStorage.setItem('pd-presets-deleted', JSON.stringify([...deletedSet]))
+  } catch {
+    /* ignore */
+  }
+}
+
+// Итоговый список: дефолты (кроме удалённых/заменённых) + кастомы на поверху,
+// плюс уникальные кастомные ключи. Ключ кастома, совпадающий с дефолтом, заменяет
+// его на месте (редактирование дефолтного пресета).
+function loadPresets() {
+  const customs = readLS('pd-presets-custom', [])
+  const deleted = new Set(readLS('pd-presets-deleted', []))
+  const byKey = {}
+  customs.forEach((c) => { if (c && c.key) byKey[c.key] = c })
+  const list = []
+  const defaultKeys = new Set(PRESETS.map((p) => p.key))
+  PRESETS.forEach((p) => {
+    if (deleted.has(p.key)) return
+    list.push(byKey[p.key] || p)
+  })
+  customs.forEach((c) => {
+    if (c && c.key && !defaultKeys.has(c.key) && !deleted.has(c.key)) list.push(c)
+  })
+  return list
+}
+
 
 // =============================================================================
 // BLD-3: связка схемы с моделью (brand+model) + редактирование существующих.
@@ -251,6 +339,10 @@ export default function BlueprintEditor() {
 
   // BLD-4: панель пресетов — активная категория фильтра.
   const [presetCat, setPresetCat] = useState('') // '' = все категории
+
+  // PRESET-2: прикладное состояние пресетов (дефолты + кастомы из localStorage).
+  const [presetList, setPresetList] = useState(() => loadPresets())
+  const [presetEditorOpen, setPresetEditorOpen] = useState(false)
 
   const [brand, setBrand] = useState('')
   const [model, setModel] = useState('')
@@ -657,7 +749,21 @@ export default function BlueprintEditor() {
     [figures],
   )
 
-  const filteredPresets = presetCat ? PRESETS.filter((p) => p.cat === presetCat) : PRESETS
+  const filteredPresets = presetCat ? presetList.filter((p) => p.cat === presetCat) : presetList
+
+  // PRESET-2: применить изменения из модального редактора к прикладному списку и
+  // сохранить в localStorage. Tombstone для удалённых дефолтных ключей, чтобы
+  // они не возвращались при перезагрузке; кастомы (в т.ч. изменённые дефолты с
+  // пометкой custom) пишутся в pd-presets-custom.
+  const savePresets = (nextList) => {
+    setPresetList(nextList)
+    const defaults = new Set(PRESETS.map((p) => p.key))
+    const present = new Set(nextList.map((p) => p && p.key))
+    const deleted = new Set(readLS('pd-presets-deleted', []))
+    defaults.forEach((k) => { if (present.has(k)) deleted.delete(k); else deleted.add(k) })
+    persistDeleted(deleted)
+    persistPresets(nextList)
+  }
 
   const selBox = selected ? bbox(selected) : null
   const viewSelected = mode === 'view' ? figures.find((f) => f.id === viewSelectedId) || null : null
@@ -734,6 +840,7 @@ export default function BlueprintEditor() {
           <div className="bld-presets-head">
             <span className="bld-toolbar-label">Пресеты</span>
             <span className="bld-presets-count">{filteredPresets.length}</span>
+            <button type="button" className="bld-presets-edit" onClick={() => setPresetEditorOpen(true)}>✏️ Редактировать пресеты</button>
           </div>
           <div className="bld-presets-cats" role="tablist" aria-label="Категории">
             <button
@@ -953,6 +1060,249 @@ export default function BlueprintEditor() {
             <button type="button" className="btn btn-sm" onClick={loadSaved} disabled={!loadId}>Загрузить</button>
           </div>
         </aside>
+      </div>
+
+      {/* PRESET-2: модальный редактор пресетов */}
+      {presetEditorOpen && (
+        <PresetEditorModal
+          open={presetEditorOpen}
+          presets={presetList}
+          onChange={savePresets}
+          onClose={() => setPresetEditorOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// =============================================================================
+// PRESET-2: модальный редактор пресетов.
+// Работает с рабочей копией списка (listDraft) и рабочей копией выбранного
+// пресета (draft) — изменения применяются к прикладному состоянию только по
+// кнопке «Сохранить» (onChange). «Отмена» закрывает окно без применения.
+// =============================================================================
+function PresetEditorModal({ open, presets, onChange, onClose }) {
+  const [listDraft, setListDraft] = useState([])
+  const [selectedKey, setSelectedKey] = useState(null)
+  const [catFilter, setCatFilter] = useState('')
+  // Выбранный пресет производный от listDraft: каждая правка сразу записывается
+  // в рабочий список (по ключу), поэтому «Сохранить» применяет все накопленные
+  // изменения — в т.ч. для нескольких редактированных пресетов в одной сессии.
+  const draft = useMemo(() => listDraft.find((p) => p.key === selectedKey) || null, [listDraft, selectedKey])
+
+  React.useEffect(() => {
+    if (open) {
+      setListDraft(presets.map((p) => normalizePreset(p)))
+      setSelectedKey(null)
+      setCatFilter('')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const num = (v) => { const n = parseFloat(v); return isFinite(n) ? n : 0 }
+
+  const filtered = catFilter ? listDraft.filter((p) => p.cat === catFilter) : listDraft
+
+  const selectPreset = (p) => setSelectedKey(p.key)
+
+  // Правка выбранного пресета сразу отражается в listDraft (по ключу).
+  const patchList = (fn) => setListDraft((l) => l.map((p) => (p.key === selectedKey ? fn(p) : p)))
+
+  const patchDraft = (patch) => patchList((p) => ({ ...p, ...patch }))
+
+  const patchShape = (idx, patch) => patchList((p) => ({ ...p, shapes: p.shapes.map((s, i) => (i === idx ? { ...s, ...patch } : s)) }))
+
+  const patchG = (idx, field, val) => patchList((p) => ({ ...p, shapes: p.shapes.map((s, i) => (i === idx ? { ...s, g: { ...s.g, [field]: val } } : s)) }))
+
+  const patchPoints = (idx, text) => {
+    const pts = String(text).split(/\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+      const [a, b] = l.split(',').map((x) => parseFloat(x))
+      return [isFinite(a) ? a : 0, isFinite(b) ? b : 0]
+    })
+    patchG(idx, 'points', pts)
+  }
+
+  const addShape = () => patchList((p) => {
+    const z = p.shapes.length + 1
+    return { ...p, shapes: [...p.shapes, { shape: 'rect', g: { x: 30, y: 30, w: 80, h: 60, rx: 6 }, fill: '#4fa3ff', z }] }
+  })
+
+  const removeShape = (idx) => patchList((p) => ({ ...p, shapes: p.shapes.filter((_, i) => i !== idx) }))
+
+  const moveShape = (idx, dir) => patchList((p) => {
+    const j = idx + dir
+    if (j < 0 || j >= p.shapes.length) return p
+    const shapes = p.shapes.slice()
+    const t = shapes[idx]; shapes[idx] = shapes[j]; shapes[j] = t
+    return { ...p, shapes }
+  })
+
+  const makeNewPreset = () => {
+    const key = 'custom-' + uid()
+    const np = {
+      key, name: 'Новый пресет', cat: 'board', shape: 'rect',
+      g: { x: 30, y: 30, w: 80, h: 60, rx: 6 }, fill: '#4fa3ff', z: 5, custom: true,
+      shapes: [{ shape: 'rect', g: { x: 30, y: 30, w: 80, h: 60, rx: 6 }, fill: '#4fa3ff', z: 5 }],
+    }
+    setListDraft((l) => [...l, np])
+    setSelectedKey(key)
+  }
+
+  const askDeletePreset = (p) => {
+    if (typeof window.confirm === 'function' && !window.confirm(`Удалить пресет «${p.name}»?`)) return
+    setListDraft((l) => l.filter((x) => x.key !== p.key))
+    if (selectedKey === p.key) setSelectedKey(null)
+  }
+
+  const save = () => {
+    // изменённые дефолты помечаем custom:true, чтобы они переживали перезагрузку
+    const defaultKeys = new Set(PRESETS.map((p) => p.key))
+    const next = listDraft.map((p) => (defaultKeys.has(p.key) ? { ...p, custom: true } : p))
+    onChange(next)
+    onClose()
+  }
+
+  if (!open) return null
+
+  // Геометрические поля фигуры в зависимости от типа.
+  const ShapeFields = ({ sh, idx }) => {
+    const g = sh.g || {}
+    const numField = (field) => (
+      <input type="number" step="any" className="pd-input bld-input-num"
+        value={g[field] === undefined ? '' : g[field]}
+        onChange={(e) => patchG(idx, field, num(e.target.value))} />
+    )
+    const geoPairs = (pairs) => (
+      <div className="bld-modal-geo">
+        {pairs.map(([k, l]) => (
+          <label key={k} className="bld-geo-field"><span>{l}</span>{numField(k)}</label>
+        ))}
+      </div>
+    )
+    let fields = null
+    if (sh.shape === 'rect') fields = geoPairs([['x', 'X'], ['y', 'Y'], ['w', 'Ш'], ['h', 'В'], ['rx', 'R']])
+    else if (sh.shape === 'circle') fields = geoPairs([['cx', 'X'], ['cy', 'Y'], ['r', 'R']])
+    else if (sh.shape === 'ellipse') fields = geoPairs([['cx', 'X'], ['cy', 'Y'], ['rx', 'RX'], ['ry', 'RY']])
+    else if (sh.shape === 'polygon') {
+      fields = (
+        <div className="bld-modal-geo">
+          <textarea className="pd-input bld-modal-points" rows={4}
+            value={Array.isArray(g.points) ? g.points.map((pt) => `${pt[0]},${pt[1]}`).join('\n') : ''}
+            onChange={(e) => patchPoints(idx, e.target.value)} />
+          <span className="bld-muted bld-modal-points-hint">По «x,y» на строку</span>
+        </div>
+      )
+    }
+    return (
+      <>
+        {fields}
+        <div className="bld-modal-shape-bottom">
+          <div className="bld-modal-fillrow">
+            <input className="pd-input bld-input-color" value={sh.fill || ''}
+              onChange={(e) => patchShape(idx, { fill: e.target.value })} placeholder="#4fa3ff" />
+            <div className="bld-modal-swatches">
+              {MODAL_SWATCHES.map((c) => (
+                <button key={c} type="button"
+                  className={`bld-modal-swatch${(sh.fill || '') === c ? ' is-active' : ''}`}
+                  style={{ background: c }} onClick={() => patchShape(idx, { fill: c })} />
+              ))}
+            </div>
+          </div>
+          <label className="bld-z-field"><span>Z</span>
+            <input type="number" className="pd-input bld-input-num" value={sh.z ?? 5}
+              onChange={(e) => patchShape(idx, { z: num(e.target.value) })} />
+          </label>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <div className="bld-modal-overlay" onClick={onClose}>
+      <div className="bld-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="bld-modal-head">
+          <h3 className="bld-modal-title">Редактор пресетов</h3>
+          <button type="button" className="bld-modal-close" aria-label="Закрыть" onClick={onClose}>✕</button>
+        </div>
+        <div className="bld-modal-body">
+          {/* Левая колонка: список пресетов */}
+          <div className="bld-modal-list">
+            <div className="bld-modal-list-top">
+              <select className="pd-select bld-select" value={catFilter} onChange={(e) => setCatFilter(e.target.value)}>
+                <option value="">Все категории</option>
+                {PRESET_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+              <button type="button" className="btn btn-sm bld-modal-add" onClick={makeNewPreset}>+ Добавить пресет</button>
+            </div>
+            <div className="bld-modal-list-scroll">
+              {filtered.map((p) => (
+                <div key={p.key} className={`bld-modal-item${selectedKey === p.key ? ' is-active' : ''}`} onClick={() => selectPreset(p)}>
+                  <span className="bld-modal-item-thumb"><PresetSvg preset={p} className="bld-modal-item-svg" /></span>
+                  <span className="bld-modal-item-name">{p.name}</span>
+                  <button type="button" className="bld-modal-del" title="Удалить пресет"
+                    onClick={(e) => { e.stopPropagation(); askDeletePreset(p) }}>🗑</button>
+                </div>
+              ))}
+              {filtered.length === 0 && <p className="bld-muted bld-modal-empty">Нет пресетов в этой категории</p>}
+            </div>
+          </div>
+          {/* Правая колонка: редактор выбранного пресета */}
+          <div className="bld-modal-edit">
+            {draft ? (
+              <div className="bld-modal-editor">
+                <div className="bld-modal-preview">
+                  <PresetSvg preset={draft} className="bld-modal-preview-svg" />
+                </div>
+                <div className="bld-modal-fields">
+                  <div className="bld-modal-fields-grid">
+                    <label className="pd-field">
+                      <span className="pd-label">Название</span>
+                      <input className="pd-input" value={draft.name || ''} onChange={(e) => patchDraft({ name: e.target.value })} />
+                    </label>
+                    <label className="pd-field">
+                      <span className="pd-label">Категория</span>
+                      <select className="pd-select bld-select" value={draft.cat || ''} onChange={(e) => patchDraft({ cat: e.target.value })}>
+                        {PRESET_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="bld-modal-shapes-head">
+                    <span className="pd-label">Фигуры</span>
+                    <button type="button" className="bld-modal-addshape" onClick={addShape}>+ Добавить фигуру</button>
+                  </div>
+                  <div className="bld-modal-shapes">
+                    {draft.shapes.map((sh, idx) => (
+                      <div key={idx} className="bld-modal-shape">
+                        <div className="bld-modal-shape-top">
+                          <span className="bld-modal-shape-n">{idx + 1}</span>
+                          <select className="pd-select bld-select" value={sh.shape} onChange={(e) => patchShape(idx, { shape: e.target.value })}>
+                            <option value="rect">Прямоугольник</option>
+                            <option value="circle">Круг</option>
+                            <option value="ellipse">Эллипс</option>
+                            <option value="polygon">Произвольная</option>
+                          </select>
+                          <span className="bld-modal-shape-orders">
+                            <button type="button" className="bld-modal-ord" onClick={() => moveShape(idx, -1)} title="Вверх">↑</button>
+                            <button type="button" className="bld-modal-ord" onClick={() => moveShape(idx, 1)} title="Вниз">↓</button>
+                            <button type="button" className="bld-modal-delshape" onClick={() => removeShape(idx)} title="Удалить фигуру">✕</button>
+                          </span>
+                        </div>
+                        <ShapeFields sh={sh} idx={idx} />
+                      </div>
+                    ))}
+                    {draft.shapes.length === 0 && <p className="bld-muted">Фигур нет — добавьте первую.</p>}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="bld-muted bld-modal-hint">Выберите пресет слева или создайте новый, чтобы отредактировать композицию фигур.</p>
+            )}
+          </div>
+        </div>
+        <div className="bld-modal-actions">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Отмена</button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={save}>Сохранить</button>
+        </div>
       </div>
     </div>
   )
